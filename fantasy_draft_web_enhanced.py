@@ -633,6 +633,15 @@ def index():
     """Main page for the fantasy draft assistant."""
     return render_template('index.html')
 
+@app.route('/health')
+def health_check():
+    """Simple health check endpoint for Railway."""
+    return jsonify({
+        'status': 'healthy',
+        'message': 'PickProphet is running',
+        'timestamp': datetime.now().isoformat()
+    })
+
 @app.route('/login')
 def login():
     """Login page."""
