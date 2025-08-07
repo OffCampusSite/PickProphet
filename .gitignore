@@ -46,6 +46,7 @@ Thumbs.db
 *.json
 !package.json
 !package-lock.json
+!railway.json
 
 # Test files
 test_*.py
