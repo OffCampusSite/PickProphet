@@ -47,20 +47,20 @@ CUSTOM_PROJECTIONS_FILE = 'custom_projections.json'
 COMPLETED_DRAFTS_FILE = 'completed_drafts.json'
 
 def load_custom_projections_from_file():
-    """Load custom projections from JSON file."""
-    global custom_projections_cache
+    """Load custom projections from JSON file and return them."""
     try:
         if os.path.exists(CUSTOM_PROJECTIONS_FILE):
             with open(CUSTOM_PROJECTIONS_FILE, 'r') as f:
                 data = json.load(f)
-                custom_projections_cache = data.get('custom_projections', {})
-                print(f"Loaded {len(custom_projections_cache)} custom projections from file")
+                projections = data.get('custom_projections', {})
+                print(f"Loaded {len(projections)} custom projections from file")
+                return projections
         else:
-            custom_projections_cache = {}
             print("No custom projections file found, starting fresh")
+            return {}
     except Exception as e:
         print(f"Error loading custom projections: {e}")
-        custom_projections_cache = {}
+        return {}
 
 def save_custom_projections_to_file():
     """Save custom projections to JSON file."""
@@ -760,14 +760,21 @@ def auth_login():
                 })
         
         if not supabase:
-            # Development mode - simple authentication
-            session['user_id'] = 'dev_user_123'
+            # Development mode - generate unique user ID based on email
+            import uuid
+            user_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, email))
+            session['user_id'] = user_uuid
             session['user_email'] = email
+            
+            # Clear cache for new user login
+            custom_projections_cache.clear()
+            print(f"Cleared cache for new user login: {user_uuid}")
+            
             return jsonify({
                 'success': True,
                 'message': 'Login successful (development mode)',
                 'user': {
-                    'id': 'dev_user_123',
+                    'id': user_uuid,
                     'email': email
                 }
             })
@@ -782,6 +789,10 @@ def auth_login():
             user = response.user
             session['user_id'] = user.id
             session['user_email'] = user.email
+            
+            # Clear cache for new user login
+            custom_projections_cache.clear()
+            print(f"Cleared cache for new user login: {user.id}")
             
             # Ensure user exists in the users table
             try:
@@ -835,14 +846,21 @@ def auth_register():
             return jsonify({'success': False, 'error': 'Password must be at least 6 characters long'}), 400
         
         if not supabase:
-            # Development mode - simple registration
-            session['user_id'] = 'dev_user_123'
+            # Development mode - generate unique user ID based on email
+            import uuid
+            user_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, email))
+            session['user_id'] = user_uuid
             session['user_email'] = email
+            
+            # Clear cache for new user registration
+            custom_projections_cache.clear()
+            print(f"Cleared cache for new user registration: {user_uuid}")
+            
             return jsonify({
                 'success': True,
                 'message': 'Registration successful (development mode)',
                 'user': {
-                    'id': 'dev_user_123',
+                    'id': user_uuid,
                     'email': email
                 }
             })
@@ -857,6 +875,10 @@ def auth_register():
             user = response.user
             session['user_id'] = user.id
             session['user_email'] = user.email
+            
+            # Clear cache for new user registration
+            custom_projections_cache.clear()
+            print(f"Cleared cache for new user registration: {user.id}")
             
             # Also create a record in the users table
             try:
@@ -896,12 +918,22 @@ def auth_register():
 @app.route('/logout')
 def logout():
     """Handle user logout and redirect to login page."""
+    # Clear user-specific cache before clearing session
+    if 'user_id' in session:
+        user_id = session['user_id']
+        print(f"Clearing cache for user {user_id} during logout")
+        custom_projections_cache.clear()
     session.clear()
     return redirect(url_for('login'))
 
 @app.route('/api/auth/logout')
 def auth_logout():
     """Handle user logout via API."""
+    # Clear user-specific cache before clearing session
+    if 'user_id' in session:
+        user_id = session['user_id']
+        print(f"Clearing cache for user {user_id} during logout")
+        custom_projections_cache.clear()
     session.clear()
     return jsonify({'success': True, 'message': 'Logout successful'})
 
@@ -3356,14 +3388,21 @@ def initialize_draft_with_user_data(user_id):
     
     print(f"Initializing draft with user data for user_id: {user_id}")
     
+    # Clear the cache for this user to ensure fresh data
+    custom_projections_cache.clear()
+    
     # Load custom projections from Supabase and store in cache
     supabase_projections = load_user_custom_projections_from_supabase(user_id)
     custom_projections_cache.update(supabase_projections)
     
-    # Also load from local file as backup
-    load_custom_projections_from_file()
+    # Also load from local file as backup (but don't override user-specific data)
+    local_projections = load_custom_projections_from_file()
+    # Only add local projections if they don't conflict with user-specific ones
+    for player, stats in local_projections.items():
+        if player not in custom_projections_cache:
+            custom_projections_cache[player] = stats
     
-    print(f"Custom projections loaded: {len(custom_projections_cache)} custom projections")
+    print(f"Custom projections loaded: {len(custom_projections_cache)} custom projections for user {user_id}")
 
 def initialize_app():
     """Initialize all app components on startup."""
@@ -3387,12 +3426,13 @@ def initialize_app():
         except Exception as e:
             print(f"⚠️ Warning: Could not load projections: {e}")
         
-        # Load custom projections
+        # Load custom projections (will be loaded per-user during draft initialization)
         try:
-            load_custom_projections_from_file()
-            print("✓ Custom projections loaded")
+            # Initialize empty cache - will be populated per-user
+            custom_projections_cache.clear()
+            print("✓ Custom projections cache initialized")
         except Exception as e:
-            print(f"⚠️ Warning: Could not load custom projections: {e}")
+            print(f"⚠️ Warning: Could not initialize custom projections cache: {e}")
         
         print("✓ PickProphet initialization complete")
         return True
