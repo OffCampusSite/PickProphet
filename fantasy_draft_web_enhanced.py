@@ -570,7 +570,8 @@ def set_scoring_format(format_type):
         # Load custom projections from Supabase for the current user
         if 'user_id' in session:
             user_id = session['user_id']
-            load_user_custom_projections_from_supabase(user_id)
+            supabase_projections = load_user_custom_projections_from_supabase(user_id)
+            custom_projections_cache.update(supabase_projections)
             print(f"Loaded custom projections from Supabase for user {user_id}")
         else:
             # Fallback to local file if no user session
@@ -1211,7 +1212,8 @@ def get_available_players():
         # Load latest custom projections from Supabase before getting available players
         if 'user_id' in session:
             user_id = session['user_id']
-            load_user_custom_projections_from_supabase(user_id)
+            supabase_projections = load_user_custom_projections_from_supabase(user_id)
+            custom_projections_cache.update(supabase_projections)
             print(f"Loaded latest custom projections from Supabase for user {user_id} before getting available players")
         
         players = assistant.get_available_players(position)
@@ -1344,7 +1346,8 @@ def get_recommendations():
         # Load latest custom projections from Supabase before returning recommendations
         if 'user_id' in session:
             user_id = session['user_id']
-            load_user_custom_projections_from_supabase(user_id)
+            supabase_projections = load_user_custom_projections_from_supabase(user_id)
+            custom_projections_cache.update(supabase_projections)
             print(f"Loaded latest custom projections from Supabase for user {user_id} before getting recommendations")
         
         # Return cached recommendations if available
@@ -1406,7 +1409,8 @@ def run_simulation():
         # Load latest custom projections from Supabase before running simulations
         if 'user_id' in session:
             user_id = session['user_id']
-            load_user_custom_projections_from_supabase(user_id)
+            supabase_projections = load_user_custom_projections_from_supabase(user_id)
+            custom_projections_cache.update(supabase_projections)
             print(f"Loaded latest custom projections from Supabase for user {user_id} before simulation")
         
         # Run simulations using web app's projection system
@@ -3308,8 +3312,9 @@ def initialize_draft_with_user_data(user_id):
     
     print(f"Initializing draft with user data for user_id: {user_id}")
     
-    # Load custom projections from Supabase
-    load_user_custom_projections_from_supabase(user_id)
+    # Load custom projections from Supabase and store in cache
+    supabase_projections = load_user_custom_projections_from_supabase(user_id)
+    custom_projections_cache.update(supabase_projections)
     
     # Also load from local file as backup
     load_custom_projections_from_file()
