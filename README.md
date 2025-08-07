@@ -4,7 +4,7 @@ A comprehensive fantasy football draft assistant with custom projections, simula
 
 ## Features
 
-- **Custom Projections**: Save and load custom player projections via Supabase
+- **Custom Projections**: Save and load custom player projections
 - **Draft Simulations**: Run 40 simulations for accurate recommendations
 - **Real-time Recommendations**: Get live draft advice based on your roster
 - **User Authentication**: Secure login with Supabase
@@ -16,96 +16,83 @@ A comprehensive fantasy football draft assistant with custom projections, simula
 - **Bench Values**: TE (5%), RB/WR first (27%), RB/WR second (18%)
 - **Simulation Count**: Increased to 40 simulations for better accuracy
 - **Supabase Integration**: All data saved to and loaded from Supabase
-- **Railway Deployment Ready**: Clean repository with essential files only
 
 ## Railway Deployment
 
 ### Prerequisites
-1. **Supabase Project**: Set up with the required tables
-2. **GitHub Repository**: Code pushed to GitHub
-3. **Railway Account**: Connected to GitHub
 
-### Deployment Steps
-
-1. **Connect to Railway**
-   - Go to [railway.app](https://railway.app)
-   - Sign in with your GitHub account
-   - Click **"New Project"**
-   - Select **"Deploy from GitHub repo"**
-   - Choose your repository
-
-2. **Configure Environment Variables**
-   - Go to your project's **"Variables"** tab
-   - Add these environment variables:
-   ```
-   SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_KEY=your-supabase-anon-key
-   FLASK_SECRET_KEY=your-secret-key
-   ```
-
-3. **Deploy**
-   - Railway will automatically detect the Python project
-   - It will install dependencies from `requirements.txt`
-   - The app will start using the `Procfile`
+1. **Railway Account**: Sign up at [railway.app](https://railway.app)
+2. **Supabase Project**: Ensure your Supabase project is set up with the required tables
+3. **Environment Variables**: Configure the following in Railway:
 
 ### Environment Variables
 
-Create a `.env` file locally (not committed to git):
-```
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-supabase-anon-key
-FLASK_SECRET_KEY=your-secret-key
-```
-
-## Local Development
-
-1. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Set Environment Variables**
-   - Create `.env` file with your Supabase credentials
-
-3. **Run the Application**
-   ```bash
-   python3 fantasy_draft_web_enhanced.py
-   ```
-
-4. **Access the Application**
-   - Open http://localhost:4000
-   - Login with your credentials
-
-## File Structure
+Set these in your Railway project settings:
 
 ```
-├── fantasy_draft_web_enhanced.py    # Main Flask application
-├── requirements.txt                  # Python dependencies
-├── Procfile                         # Railway deployment
-├── railway.json                     # Railway configuration
-├── templates/                       # HTML templates
-│   ├── index.html                   # Main dashboard
-│   ├── draft.html                   # Draft room
-│   ├── pre_draft.html              # Pre-draft analysis
-│   ├── login.html                   # Login page
-│   ├── register.html                # Registration page
-│   └── user.html                    # User profile
-├── *.csv                           # Player projection data
-└── README.md                       # This file
+SUPABASE_URL=https://arlovpdltkdlrkkmtigv.supabase.co
+SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFybG92cGRsdGtkbHJra210aWd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ1MjgyMDEsImV4cCI6MjA3MDEwNDIwMX0.PbTsyL_TmzNgYPxOPfAQPYI6MykbTNnW0sT5epwxTtg
+FLASK_SECRET_KEY=your-secret-key-here
 ```
 
-## Database Setup
+### Deployment Steps
 
-The application requires a Supabase project with the following tables:
+1. **Connect Repository**: 
+   - Go to Railway dashboard
+   - Click "New Project"
+   - Select "Deploy from GitHub repo"
+   - Connect your GitHub repository
+
+2. **Configure Environment Variables**:
+   - In your Railway project, go to "Variables"
+   - Add the environment variables listed above
+
+3. **Deploy**:
+   - Railway will automatically detect the Python app
+   - The `Procfile` and `requirements.txt` will handle the deployment
+   - Your app will be available at the provided URL
+
+### Database Setup
+
+Ensure your Supabase project has the following tables:
+
 - `users` - User authentication
 - `user_custom_projections` - Custom player projections
 - `user_draft_sessions` - Draft session data
 - `user_rosters` - User roster data
 - `completed_drafts` - Completed draft data
 
+## Local Development
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables
+export SUPABASE_URL=https://arlovpdltkdlrkkmtigv.supabase.co
+export SUPABASE_KEY=your-supabase-key
+export FLASK_SECRET_KEY=your-secret-key
+
+# Run the application
+python3 fantasy_draft_web_enhanced.py
+```
+
+## Usage
+
+1. **Login**: Use your credentials to access the application
+2. **Pre-draft**: Set custom projections for players
+3. **Initialize Draft**: Start a new draft session
+4. **Get Recommendations**: Receive real-time draft advice
+5. **Draft Players**: Make selections and track your roster
+
+## Bench Value System
+
+- **QB**: 10% (1st bench), 1% (2nd+ bench)
+- **RB**: 27% (1st bench), 18% (2nd bench), 15% (3rd bench), 1% (4th+ bench)
+- **WR**: 27% (1st bench), 18% (2nd bench), 10% (3rd bench), 1% (4th+ bench)
+- **TE**: 5% (1st bench), 1% (2nd+ bench)
+- **K/DST**: 1% (all bench positions)
+
 ## Support
 
-For deployment issues, check:
-1. Environment variables are correctly set
-2. Supabase project is properly configured
-3. Railway logs for any error messages 
+For issues or questions, please check the application logs in Railway dashboard. 
