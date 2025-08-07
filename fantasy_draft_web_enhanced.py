@@ -783,6 +783,22 @@ def auth_login():
             session['user_id'] = user.id
             session['user_email'] = user.email
             
+            # Ensure user exists in the users table
+            try:
+                # Check if user exists in users table
+                result = supabase.table('users').select('*').eq('id', user.id).execute()
+                if not result.data:
+                    # User doesn't exist in users table, create them
+                    supabase.table('users').insert({
+                        'id': user.id,
+                        'email': user.email,
+                        'created_at': user.created_at
+                    }).execute()
+                    print(f"Created missing user record in users table for {user.id}")
+            except Exception as user_table_error:
+                print(f"Warning: Could not check/create user record in users table: {user_table_error}")
+                # Continue anyway - the user is still authenticated
+            
             return jsonify({
                 'success': True,
                 'message': 'Login successful',
@@ -841,6 +857,18 @@ def auth_register():
             user = response.user
             session['user_id'] = user.id
             session['user_email'] = user.email
+            
+            # Also create a record in the users table
+            try:
+                supabase.table('users').insert({
+                    'id': user.id,
+                    'email': user.email,
+                    'created_at': user.created_at
+                }).execute()
+                print(f"Created user record in users table for {user.id}")
+            except Exception as user_table_error:
+                print(f"Warning: Could not create user record in users table: {user_table_error}")
+                # Continue anyway - the user is still registered in auth
             
             return jsonify({
                 'success': True,
@@ -924,6 +952,22 @@ def save_user_custom_projection():
             })
         
         # Production mode - save to Supabase
+        # First ensure user exists in users table
+        try:
+            result = supabase.table('users').select('*').eq('id', user_id).execute()
+            if not result.data:
+                # User doesn't exist in users table, create them
+                supabase.table('users').insert({
+                    'id': user_id,
+                    'email': session.get('user_email', 'unknown@example.com'),
+                    'created_at': 'now()'
+                }).execute()
+                print(f"Created missing user record in users table for {user_id}")
+        except Exception as user_table_error:
+            print(f"Warning: Could not check/create user record in users table: {user_table_error}")
+            return jsonify({'success': False, 'error': 'User not found in database'}), 400
+        
+        # Now save the custom projection
         response = supabase.table('user_custom_projections').upsert({
             'user_id': user_id,
             'player_name': player_name,
