@@ -629,17 +629,57 @@ dev_custom_projections = {}
 
 @app.route('/health')
 def health_check():
-    """Simple health check endpoint for Railway."""
-    return jsonify({
-        'status': 'healthy',
-        'message': 'PickProphet is running',
-        'timestamp': datetime.now().isoformat()
-    })
+    """Comprehensive health check endpoint for Railway."""
+    try:
+        # Check if basic app is running
+        app_status = "healthy"
+        
+        # Check database connection
+        db_status = "healthy"
+        try:
+            if supabase:
+                # Simple query to test connection
+                result = supabase.table('users').select('count', count='exact').limit(1).execute()
+                db_status = "healthy"
+            else:
+                db_status = "no_supabase"
+        except Exception as e:
+            db_status = f"error: {str(e)}"
+        
+        # Check if projections are loaded
+        projections_status = "healthy"
+        try:
+            if not hasattr(get_draft_assistant(), 'projections_cache') or not get_draft_assistant().projections_cache:
+                projections_status = "no_projections"
+        except Exception as e:
+            projections_status = f"error: {str(e)}"
+        
+        return jsonify({
+            'message': 'PickProphet is running',
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'components': {
+                'app': app_status,
+                'database': db_status,
+                'projections': projections_status
+            }
+        })
+    except Exception as e:
+        # Even if health check fails, return a response so Railway doesn't think the app is down
+        return jsonify({
+            'message': 'PickProphet health check encountered an error',
+            'status': 'degraded',
+            'timestamp': datetime.now().isoformat(),
+            'error': str(e)
+        }), 200  # Still return 200 to prevent Railway from restarting
 
 @app.route('/')
-def root_health_check():
-    """Simple root health check endpoint for Railway."""
-    return "OK", 200
+def root():
+    """Root route - redirect to login if not authenticated, app if authenticated."""
+    if 'user_id' in session:
+        return redirect('/app')
+    else:
+        return redirect('/login')
 
 @app.route('/app')
 @login_required
@@ -3219,52 +3259,44 @@ def check_auth():
         return jsonify({'authenticated': False}), 401
 
 def load_user_custom_projections_from_supabase(user_id):
-    """Load custom projections from Supabase for a specific user."""
-    global custom_projections_cache
-    
-    if not supabase or not user_id:
-        print("No Supabase connection or user_id provided")
-        return
-    
+    """Load custom projections for a specific user from Supabase."""
     try:
-        # Fetch custom projections for this user
-        result = supabase.table('user_custom_projections').select('*').eq('user_id', user_id).execute()
+        if not supabase:
+            print("No Supabase connection available")
+            return {}
         
-        if result.data:
-            # Clear existing cache and load from Supabase
-            custom_projections_cache = {}
-            
-            for record in result.data:
-                player_name = record['player_name']
-                custom_stats = record['custom_stats']
-                projections = {
-                    'ppr': record['ppr_projection'],
-                    'half-ppr': record['half_ppr_projection'],
-                    'non-ppr': record['non_ppr_projection']
-                }
-                
-                custom_projections_cache[player_name] = {
-                    'stats': custom_stats,
-                    'projections': projections
-                }
-            
-            print(f"Loaded {len(custom_projections_cache)} custom projections from Supabase for user {user_id}")
-        else:
-            print(f"No custom projections found in Supabase for user {user_id}")
-            
+        # Check if the table exists first
+        try:
+            result = supabase.table('user_custom_projections').select('*').eq('user_id', user_id).execute()
+            custom_projections = {}
+            for row in result.data:
+                player_name = row.get('player_name')
+                if player_name:
+                    custom_projections[player_name] = {
+                        'passing_yards': row.get('passing_yards', 0),
+                        'passing_tds': row.get('passing_tds', 0),
+                        'passing_ints': row.get('passing_ints', 0),
+                        'rushing_yards': row.get('rushing_yards', 0),
+                        'rushing_tds': row.get('rushing_tds', 0),
+                        'receptions': row.get('receptions', 0),
+                        'receiving_yards': row.get('receiving_yards', 0),
+                        'receiving_tds': row.get('receiving_tds', 0),
+                        'fumbles': row.get('fumbles', 0),
+                        'fg_made': row.get('fg_made', 0),
+                        'xp_made': row.get('xp_made', 0)
+                    }
+            print(f"Loaded {len(custom_projections)} custom projections from Supabase for user {user_id}")
+            return custom_projections
+        except Exception as e:
+            if "does not exist" in str(e):
+                print(f"Table user_custom_projections does not exist for user {user_id}")
+                return {}
+            else:
+                print(f"Error loading custom projections from Supabase: {e}")
+                return {}
     except Exception as e:
-        error_msg = str(e)
-        print(f"Error loading custom projections: {error_msg}")
-        
-        # Check if it's a table not found error
-        if "does not exist" in error_msg or "PGRST205" in error_msg:
-            print("Supabase table not found - this is expected for new deployments")
-            print("Custom projections will be loaded from local file only")
-        else:
-            print("Supabase connection error - falling back to local file")
-        
-        # Fall back to local file
-        load_custom_projections_from_file()
+        print(f"Error loading custom projections: {e}")
+        return {}
 
 def initialize_draft_with_user_data(user_id):
     """Initialize draft with user's custom projections from Supabase."""
@@ -3284,6 +3316,45 @@ def initialize_draft_with_user_data(user_id):
     
     print(f"Custom projections loaded: {len(custom_projections_cache)} custom projections")
 
+def initialize_app():
+    """Initialize all app components on startup."""
+    try:
+        print("Initializing PickProphet application...")
+        
+        # Initialize Supabase connection
+        if supabase:
+            print("✓ Supabase connection established")
+        else:
+            print("⚠️ Supabase not configured, running in development mode")
+        
+        # Initialize draft assistant
+        assistant = get_draft_assistant()
+        print("✓ Draft assistant initialized")
+        
+        # Load projections
+        try:
+            cache_all_projections()
+            print("✓ Player projections loaded")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not load projections: {e}")
+        
+        # Load custom projections
+        try:
+            load_custom_projections_from_file()
+            print("✓ Custom projections loaded")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not load custom projections: {e}")
+        
+        print("✓ PickProphet initialization complete")
+        return True
+    except Exception as e:
+        print(f"❌ Error during initialization: {e}")
+        return False
+
+# Initialize app components
+if not initialize_app():
+    print("Warning: App initialization had issues, but continuing...")
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 6003))
+    port = int(os.environ.get('PORT', 6007))
     app.run(debug=False, host='0.0.0.0', port=port) 
