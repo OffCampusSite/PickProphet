@@ -627,12 +627,6 @@ def load_user_custom_projections_to_assistant():
 # Development mode custom projections cache
 dev_custom_projections = {}
 
-@app.route('/')
-@login_required
-def index():
-    """Main page for the fantasy draft assistant."""
-    return render_template('index.html')
-
 @app.route('/health')
 def health_check():
     """Simple health check endpoint for Railway."""
@@ -641,6 +635,17 @@ def health_check():
         'message': 'PickProphet is running',
         'timestamp': datetime.now().isoformat()
     })
+
+@app.route('/')
+def root_health_check():
+    """Simple root health check endpoint for Railway."""
+    return "OK", 200
+
+@app.route('/app')
+@login_required
+def index():
+    """Main page for the fantasy draft assistant."""
+    return render_template('index.html')
 
 @app.route('/login')
 def login():
@@ -3248,7 +3253,16 @@ def load_user_custom_projections_from_supabase(user_id):
             print(f"No custom projections found in Supabase for user {user_id}")
             
     except Exception as e:
-        print(f"Error loading custom projections: {e}")
+        error_msg = str(e)
+        print(f"Error loading custom projections: {error_msg}")
+        
+        # Check if it's a table not found error
+        if "does not exist" in error_msg or "PGRST205" in error_msg:
+            print("Supabase table not found - this is expected for new deployments")
+            print("Custom projections will be loaded from local file only")
+        else:
+            print("Supabase connection error - falling back to local file")
+        
         # Fall back to local file
         load_custom_projections_from_file()
 
