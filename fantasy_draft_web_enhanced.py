@@ -11,34 +11,25 @@ from datetime import datetime
 from supabase_manager import supabase_manager
 import time
 import uuid
-import signal
-import sys
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = 'fantasy_draft_secret_key_2024'
 
-# Initialize Supabase connection with better error handling
+# Initialize Supabase
 supabase = None
 try:
-    supabase_url = os.getenv('SUPABASE_URL')
-    supabase_key = os.getenv('SUPABASE_KEY')
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_KEY")
     
     if supabase_url and supabase_key:
-        # Test connection first
-        test_response = http_session.get(f"{supabase_url}/rest/v1/", timeout=10)
-        if test_response.status_code in [200, 401, 403]:  # Any response means connection works
-            supabase = create_client(supabase_url, supabase_key)
-            print("Supabase connected successfully")
-        else:
-            print(f"Supabase connection test failed: {test_response.status_code}")
+        supabase: Client = create_client(supabase_url, supabase_key)
+        print("Supabase connected successfully")
     else:
-        print("Supabase credentials not found in environment variables")
+        print("Supabase credentials not found. Running in development mode without database.")
 except Exception as e:
-    print(f"Error initializing Supabase: {e}")
+    print(f"Supabase initialization failed: {e}. Running in development mode without database.")
     supabase = None
 
 # Global variable to store the draft assistant instance
@@ -54,25 +45,6 @@ CUSTOM_PROJECTIONS_FILE = 'custom_projections.json'
 
 # Persistent storage for completed drafts
 COMPLETED_DRAFTS_FILE = 'completed_drafts.json'
-
-# Railway-specific optimizations
-def signal_handler(sig, frame):
-    print('Shutting down gracefully...')
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
-
-# Increase timeout for Supabase connections
-retry_strategy = Retry(
-    total=3,
-    backoff_factor=1,
-    status_forcelist=[429, 500, 502, 503, 504],
-)
-adapter = HTTPAdapter(max_retries=retry_strategy)
-http_session = requests.Session()
-http_session.mount("https://", adapter)
-http_session.mount("http://", adapter)
 
 def load_custom_projections_from_file():
     """Load custom projections from JSON file."""
