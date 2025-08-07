@@ -3262,5 +3262,5 @@ def initialize_draft_with_user_data(user_id):
     print(f"Custom projections loaded: {len(custom_projections_cache)} custom projections")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 4000))
+    port = int(os.environ.get('PORT', 6003))
     app.run(debug=False, host='0.0.0.0', port=port) 
