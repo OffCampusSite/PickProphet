@@ -770,9 +770,12 @@ def auth_login():
             custom_projections_cache.clear()
             print(f"Cleared cache for new user login: {user_uuid}")
             
+            # In development mode, we can't create users in Supabase, so we'll handle this differently
+            # The user will be able to use the app but custom projections won't be saved to Supabase
+            
             return jsonify({
                 'success': True,
-                'message': 'Login successful (development mode)',
+                'message': 'Login successful (development mode - custom projections saved locally only)',
                 'user': {
                     'id': user_uuid,
                     'email': email
@@ -945,10 +948,10 @@ def get_user_custom_projections():
         user_id = session['user_id']
         
         if not supabase:
-            # Development mode - return empty projections
+            # Development mode - return local projections
             return jsonify({
                 'success': True,
-                'custom_projections': {}
+                'custom_projections': custom_projections_cache
             })
         
         response = supabase.table('user_custom_projections').select('*').eq('user_id', user_id).execute()
@@ -977,10 +980,22 @@ def save_user_custom_projection():
         custom_stats = data.get('custom_stats')
         
         if not supabase:
-            # Development mode - just return success
+            # Development mode - save to local cache and file
+            global custom_projections_cache
+            
+            # Save to cache
+            custom_projections_cache[player_name] = custom_stats
+            
+            # Save to file
+            try:
+                save_custom_projections_to_file()
+                print(f"Saved custom projection for {player_name} to local file")
+            except Exception as e:
+                print(f"Warning: Could not save to local file: {e}")
+            
             return jsonify({
                 'success': True,
-                'message': f'Custom projection saved for {player_name} (development mode)'
+                'message': f'Custom projection saved for {player_name} (development mode - local storage)'
             })
         
         # Production mode - save to Supabase
@@ -3342,8 +3357,8 @@ def load_user_custom_projections_from_supabase(user_id):
     """Load custom projections for a specific user from Supabase."""
     try:
         if not supabase:
-            print("No Supabase connection available")
-            return {}
+            print("No Supabase connection available - using local cache")
+            return custom_projections_cache
         
         # Check if the table exists first
         try:
