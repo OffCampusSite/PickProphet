@@ -1,0 +1,50 @@
+{
+  "custom_projections": {
+    "Justin Jefferson": {
+      "stats": {
+        "receptions": 104.1,
+        "receiving_yards": 2000,
+        "receiving_tds": 100,
+        "rushing_yards": 2.5,
+        "rushing_tds": 0,
+        "fumbles": 0.4
+      },
+      "projections": {
+        "non-ppr": 799.5,
+        "ppr": 903.6,
+        "half-ppr": 851.5
+      }
+    },
+    "Ja'Marr Chase": {
+      "stats": {
+        "receptions": 120,
+        "receiving_yards": 1600,
+        "receiving_tds": 15,
+        "rushing_yards": 25,
+        "rushing_tds": 0,
+        "fumbles": 1
+      },
+      "projections": {
+        "non-ppr": 250.5,
+        "ppr": 370.5,
+        "half-ppr": 310.5
+      }
+    },
+    "Terry McLaurin": {
+      "stats": {
+        "receptions": 77.2,
+        "receiving_yards": 1048.9,
+        "receiving_tds": 15,
+        "rushing_yards": 8.6,
+        "rushing_tds": 0.1,
+        "fumbles": 0.8
+      },
+      "projections": {
+        "non-ppr": 194.8,
+        "ppr": 272.0,
+        "half-ppr": 233.4
+      }
+    }
+  },
+  "last_updated": "2025-07-31T19:58:36.968384"
+}
