@@ -18,6 +18,14 @@ fi
 
 echo "✅ Railway CLI ready"
 
+# Test dependencies first
+echo "🧪 Testing dependencies..."
+python3 test_dependencies.py
+if [ $? -ne 0 ]; then
+    echo "❌ Dependency test failed. Please fix the issues before deploying."
+    exit 1
+fi
+
 # Test the application locally first
 echo "🧪 Testing application locally..."
 python3 fantasy_draft_web_enhanced.py &

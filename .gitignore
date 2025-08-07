@@ -1,6 +1,3 @@
-# Environment variables
-.env
-
 # Python
 __pycache__/
 *.py[cod]
@@ -24,10 +21,10 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
-venv/
-env/
-ENV/
+# Environment variables
+.env
+.env.local
+.env.production
 
 # IDE
 .vscode/
@@ -37,21 +34,29 @@ ENV/
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
 # Logs
 *.log
-
-# Local data files (if any)
-*.json
-!package.json
-!package-lock.json
-!railway.json
-
-# Test files
-test_*.py
-*_test.py
+logs/
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+
+# Railway
+.railway/ 
