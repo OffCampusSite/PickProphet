@@ -29,7 +29,7 @@ try:
     
     if supabase_url and supabase_key:
         # Test connection first
-        test_response = http.get(f"{supabase_url}/rest/v1/", timeout=10)
+        test_response = http_session.get(f"{supabase_url}/rest/v1/", timeout=10)
         if test_response.status_code in [200, 401, 403]:  # Any response means connection works
             supabase = create_client(supabase_url, supabase_key)
             print("Supabase connected successfully")
@@ -70,9 +70,9 @@ retry_strategy = Retry(
     status_forcelist=[429, 500, 502, 503, 504],
 )
 adapter = HTTPAdapter(max_retries=retry_strategy)
-http = requests.Session()
-http.mount("https://", adapter)
-http.mount("http://", adapter)
+http_session = requests.Session()
+http_session.mount("https://", adapter)
+http_session.mount("http://", adapter)
 
 def load_custom_projections_from_file():
     """Load custom projections from JSON file."""
