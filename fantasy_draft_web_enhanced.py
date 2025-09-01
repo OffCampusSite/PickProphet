@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from fantasy_draft_assistant_v2 import FantasyDraftAssistant
+from fantasy_draft_assistant_v2_clean import FantasyDraftAssistant
 import json
 import os
 import random
@@ -15,7 +15,7 @@ import uuid
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'fantasy_draft_secret_key_2024'
+app.secret_key = 'james_clessuras_ff_secret_key_2024'
 
 # Initialize Supabase
 supabase = None
@@ -38,109 +38,112 @@ selected_scoring_format = None  # 'ppr', 'non-ppr', or 'half-ppr'
 
 # Global cache for player projections
 player_projections_cache = {}
-custom_projections_cache = {}
+# Custom projections are disabled as requested
 
-# Persistent storage for custom projections
-CUSTOM_PROJECTIONS_FILE = 'custom_projections.json'
+# Global player cache - always available
+GLOBAL_PLAYERS_CACHE = []
+GLOBAL_PLAYERS_LOADED = False
+
+# Dummy custom projections cache (disabled as requested)
+custom_projections_cache = {}
 
 # Persistent storage for completed drafts
 COMPLETED_DRAFTS_FILE = 'completed_drafts.json'
 
-def load_custom_projections_from_file():
-    """Load custom projections from JSON file and return them."""
-    try:
-        if os.path.exists(CUSTOM_PROJECTIONS_FILE):
-            with open(CUSTOM_PROJECTIONS_FILE, 'r') as f:
-                data = json.load(f)
-                projections = data.get('custom_projections', {})
-                print(f"Loaded {len(projections)} custom projections from file")
-                return projections
-        else:
-            print("No custom projections file found, starting fresh")
-            return {}
-    except Exception as e:
-        print(f"Error loading custom projections: {e}")
-        return {}
+# Custom projections function removed
 
-def save_custom_projections_to_file():
-    """Save custom projections to JSON file."""
+def load_players_globally():
+    """Load players directly from CSV and cache them globally - always works."""
+    global GLOBAL_PLAYERS_CACHE, GLOBAL_PLAYERS_LOADED
+    
+    if GLOBAL_PLAYERS_LOADED:
+        return GLOBAL_PLAYERS_CACHE
+    
     try:
-        data = {
-            'custom_projections': custom_projections_cache,
-            'last_updated': datetime.now().isoformat()
-        }
-        with open(CUSTOM_PROJECTIONS_FILE, 'w') as f:
-            json.dump(data, f, indent=2)
-        print(f"Saved {len(custom_projections_cache)} custom projections to file")
-    except Exception as e:
-        print(f"Error saving custom projections: {e}")
-
-def get_custom_projection_for_player(player_name, scoring_format=None):
-    """Get custom projection for a specific player and scoring format."""
-    global custom_projections_cache
-    
-    if scoring_format is None:
-        scoring_format = selected_scoring_format or 'non-ppr'
-    
-    if player_name in custom_projections_cache:
-        custom_data = custom_projections_cache[player_name]
+        import pandas as pd
         
-        if isinstance(custom_data, dict) and 'projections' in custom_data:
-            projection = custom_data['projections'].get(scoring_format)
-            if projection is not None:
-                return projection
-        elif isinstance(custom_data, dict) and scoring_format in custom_data:
-            return custom_data[scoring_format]
-        elif isinstance(custom_data, dict) and 'stats' in custom_data:
-            # Calculate projection from custom stats
-            stats = custom_data['stats']
-            return calculate_projection_from_stats(stats, scoring_format)
-    
-    return None
-
-def calculate_projection_from_stats(stats, scoring_format):
-    """Calculate projection from custom stats for a specific scoring format."""
-    if not stats:
-        return 0.0
-    
-    position = stats.get('position', 'RB')
-    
-    # Extract stats with safe defaults
-    try:
-        passing_yards = float(stats.get('passing_yards', 0))
-        passing_tds = float(stats.get('passing_tds', 0))
-        passing_ints = float(stats.get('passing_ints', 0))
-        rushing_yards = float(stats.get('rushing_yards', 0))
-        rushing_tds = float(stats.get('rushing_tds', 0))
-        receptions = float(stats.get('receptions', 0))
-        receiving_yards = float(stats.get('receiving_yards', 0))
-        receiving_tds = float(stats.get('receiving_tds', 0))
-        fumbles = float(stats.get('fumbles', 0))
+        # Load the OALFFL rankings CSV file
+        csv_path = "09012025Rankings_updated_oalffl (1).csv"
         
-        # Handle kicker stats - check both field names
-        fg_made = float(stats.get('fg_made', stats.get('field_goals', 0)))
-        xp_made = float(stats.get('xp_made', stats.get('extra_points', 0)))
-    except (ValueError, TypeError):
-        # If any stat conversion fails, return 0
-        return 0.0
-    
-    # Calculate based on scoring format
-    try:
-        if scoring_format == 'ppr':
-            return calculate_ppr_points(position, passing_yards, passing_tds, passing_ints,
-                                      rushing_yards, rushing_tds, receptions, receiving_yards, 
-                                      receiving_tds, fumbles, fg_made, xp_made)
-        elif scoring_format == 'half-ppr':
-            return calculate_half_ppr_points(position, passing_yards, passing_tds, passing_ints,
-                                           rushing_yards, rushing_tds, receptions, receiving_yards, 
-                                           receiving_tds, fumbles, fg_made, xp_made)
-        else:  # non-ppr
-            return calculate_non_ppr_points(position, passing_yards, passing_tds, passing_ints,
-                                          rushing_yards, rushing_tds, receptions, receiving_yards, 
-                                          receiving_tds, fumbles, fg_made, xp_made)
+        if not os.path.exists(csv_path):
+            print(f"CSV file not found: {csv_path}")
+            return []
+        
+        # Skip the first 4 rows and use the 5th row as header
+        main_df = pd.read_csv(csv_path, skiprows=4, header=0)
+        # The first row contains the actual column names, so we need to use it as header
+        main_df.columns = main_df.iloc[0]
+        main_df = main_df.drop(main_df.index[0])
+        main_df = main_df.reset_index(drop=True)
+        
+        print(f"Loading {len(main_df)} players from {csv_path}")
+        
+        players = []
+        for _, row in main_df.iterrows():
+            # Skip header rows and empty rows
+            if pd.notna(row['Name']) and str(row['Name']).strip() != '' and str(row['Name']).strip() != 'Name':
+                # Get basic info from OALFFL CSV
+                name = str(row['Name']).strip()
+                position = str(row['Pos']).strip()
+                # Convert ST to DST for consistency
+                if position == 'ST':
+                    position = 'DST'
+                team = str(row['Team']).strip()
+                
+                # Handle ADP (Rank = ADP)
+                adp_value = row['Rank']
+                if pd.notna(adp_value) and adp_value != '-' and adp_value != '':
+                    try:
+                        adp = float(adp_value)
+                    except (ValueError, TypeError):
+                        adp = 999.0
+                else:
+                    adp = 999.0
+        
+                # Handle bye week
+                bye_value = row['Bye']
+                if pd.notna(bye_value) and bye_value != '-' and bye_value != '':
+                    try:
+                        bye_week = int(bye_value)
+                    except (ValueError, TypeError):
+                        bye_week = 0
+                else:
+                    bye_week = 0
+        
+                # Handle projected points
+                proj_value = row['Points']
+                if pd.notna(proj_value) and proj_value != '-' and proj_value != '':
+                    try:
+                        projected_points = float(proj_value)
+                    except (ValueError, TypeError):
+                        projected_points = 0.0
+                else:
+                    projected_points = 0.0
+                
+                # Create player dictionary
+                player = {
+                    'name': name,
+                    'position': position,
+                    'team': team,
+                    'adp': adp,
+                    'bye_week': bye_week,
+                    'projected_points': projected_points,
+                    'is_customized': False
+                }
+                players.append(player)
+        
+        GLOBAL_PLAYERS_CACHE = players
+        GLOBAL_PLAYERS_LOADED = True
+        print(f"Successfully cached {len(players)} players globally")
+        return players
+        
     except Exception as e:
-        print(f"Error calculating projection for {position} in {scoring_format}: {e}")
-        return 0.0
+        print(f"Error loading players globally: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+# Custom projections functions removed
 
 def login_required(f):
     @wraps(f)
@@ -159,34 +162,11 @@ def get_draft_assistant():
         selected_scoring_format = 'non-ppr'
     
     if draft_assistant is None:
-        # Define CSV paths for each scoring format
-        csv_paths = {
-            'ppr': [
-                "Desktop/Updated_PPR_WeeklyFantasyFootballCheatSheet_v2 (1).csv",
-                "Downloads/Updated_PPR_WeeklyFantasyFootballCheatSheet_v2.csv",
-                "Updated_PPR_WeeklyFantasyFootballCheatSheet_v2.csv"
-            ],
-            'non-ppr': [
-                "Downloads/WeeklyFantasyFootballCheatingSheet.csv",
-                "WeeklyFantasyFootballCheatingSheet.csv",
-                "Desktop/WeeklyFantasyFootballCheatingSheet.csv"
-            ],
-            'half-ppr': [
-                "Desktop/Updated_HalfPPR_WeeklyFantasyFootballCheatSheet (1).csv",
-                "Downloads/Updated_HalfPPR_WeeklyFantasyFootballCheatSheet.csv",
-                "Updated_HalfPPR_WeeklyFantasyFootballCheatSheet.csv"
-            ]
-        }
+        # Use the OALFFL rankings CSV file
+        csv_path = "09012025Rankings_updated_oalffl (1).csv"
         
-        # Try to find the appropriate CSV file
-        csv_path = None
-        for path in csv_paths[selected_scoring_format]:
-            if os.path.exists(path):
-                csv_path = path
-                break
-        
-        if csv_path is None:
-            print(f"No {selected_scoring_format.upper()} CSV file found. Creating sample data.")
+        if not os.path.exists(csv_path):
+            print(f"OALFFL rankings CSV file not found: {csv_path}. Creating sample data.")
             csv_path = "sample_data.csv"  # This will trigger sample data creation
         
         draft_assistant = FantasyDraftAssistant(csv_path)
@@ -195,243 +175,79 @@ def get_draft_assistant():
         # Cache projections for all scoring formats
         cache_all_projections()
         
-        # Load custom projections from file
-        load_custom_projections_from_file()
-        
-        # Always load user's custom projections
-        if 'user_id' in session:
-            load_user_custom_projections_to_assistant()
+        # Note: Draft will be initialized when user clicks "Initialize Draft" button
+        # Note: Custom projections are disabled as requested
     
     return draft_assistant
 
 def cache_all_projections():
-    """Cache projections for all scoring formats from FantasyPros data."""
+    """Cache projections for all scoring formats from OALFFL data."""
     global player_projections_cache
     
     try:
-        print("Starting to cache projections...")
+        print("Starting to cache projections from OALFFL data...")
         
-        # Load FantasyPros data files
-        fantasy_pros_files = {
-            'QB': 'FantasyPros_Fantasy_Football_Projections_QB.csv',
-            'RB': 'FantasyPros_Fantasy_Football_Projections_RB.csv',
-            'WR': 'FantasyPros_Fantasy_Football_Projections_WR.csv',
-            'TE': 'FantasyPros_Fantasy_Football_Projections_TE.csv',
-            'K': 'FantasyPros_Fantasy_Football_Projections_K.csv',
-            'DST': 'FantasyPros_Fantasy_Football_Projections_DST.csv'
-        }
+        # Use OALFFL rankings data instead of FantasyPros files
+        csv_path = "09012025Rankings_updated_oalffl (1).csv"
+        
+        if not os.path.exists(csv_path):
+            print(f"OALFFL file not found: {csv_path}")
+            player_projections_cache = {}
+            return
+        
+        # Load OALFFL data
+        df = pd.read_csv(csv_path, skiprows=4, header=0)
+        df.columns = df.iloc[0]
+        df = df.drop(df.index[0]).reset_index(drop=True)
         
         player_projections_cache = {}
         
-        for position, filename in fantasy_pros_files.items():
-            print(f"Processing {position} file: {filename}")
-            if os.path.exists(filename):
-                print(f"File exists, loading {filename}")
-                df = pd.read_csv(filename)
-                print(f"Loaded {len(df)} rows from {filename}")
-                
-                for idx, row in df.iterrows():
-                    player_name = row.get('Player', row.get('Name', 'Unknown'))
-                    team = row.get('Team', '')
-                    
-                    # Skip empty rows
-                    if pd.isna(player_name) or player_name == '' or player_name == ' ':
-                        continue
-                    
-                    print(f"Processing player: {player_name} ({position})")
-                    
-                    # Map columns based on position
-                    if position == 'QB':
-                        passing_yards = float(str(row.get('YDS', 0) or 0).replace(',', ''))
-                        passing_tds = float(row.get('TDS', 0) or 0)
-                        passing_ints = float(row.get('INT', 0) or 0)
-                        rushing_yards = float(str(row.get('YDS.1', 0) or 0).replace(',', ''))
-                        rushing_tds = float(row.get('TDS.1', 0) or 0)
-                        receptions = 0
-                        receiving_yards = 0
-                        receiving_tds = 0
-                        fumbles = float(row.get('FL', 0) or 0)
-                        fg_made = 0
-                        xp_made = 0
-                    elif position in ['RB', 'WR', 'TE']:
-                        passing_yards = 0
-                        passing_tds = 0
-                        passing_ints = 0
-                        rushing_yards = float(str(row.get('YDS.1', 0) or 0).replace(',', ''))
-                        rushing_tds = float(row.get('TDS.1', 0) or 0)
-                        receptions = float(row.get('REC', 0) or 0)
-                        receiving_yards = float(str(row.get('YDS', 0) or 0).replace(',', ''))
-                        receiving_tds = float(row.get('TDS', 0) or 0)
-                        fumbles = float(row.get('FL', 0) or 0)
-                        fg_made = 0
-                        xp_made = 0
-                    elif position == 'K':
-                        passing_yards = 0
-                        passing_tds = 0
-                        passing_ints = 0
-                        rushing_yards = 0
-                        rushing_tds = 0
-                        receptions = 0
-                        receiving_yards = 0
-                        receiving_tds = 0
-                        fumbles = 0
-                        fg_made = float(row.get('FG', 0) or 0)
-                        xp_made = float(row.get('XPT', 0) or 0)
-                        
-                        # Calculate kicker projections for all scoring formats
-                        projections = {
-                            'non-ppr': calculate_non_ppr_points(
-                                position, passing_yards, passing_tds, passing_ints,
-                                rushing_yards, rushing_tds, receptions, receiving_yards, 
-                                receiving_tds, fumbles, fg_made, xp_made
-                            ),
-                            'ppr': calculate_ppr_points(
-                                position, passing_yards, passing_tds, passing_ints,
-                                rushing_yards, rushing_tds, receptions, receiving_yards, 
-                                receiving_tds, fumbles, fg_made, xp_made
-                            ),
-                            'half-ppr': calculate_half_ppr_points(
-                                position, passing_yards, passing_tds, passing_ints,
-                                rushing_yards, rushing_tds, receptions, receiving_yards, 
-                                receiving_tds, fumbles, fg_made, xp_made
-                            )
-                        }
-                        
-                        player_projections_cache[player_name] = {
-                            'position': position,
-                            'team': team,
-                            'projections': projections,
-                            'stats': {
-                                'passing_yards': 0,
-                                'passing_tds': 0,
-                                'passing_ints': 0,
-                                'rushing_yards': 0,
-                                'rushing_tds': 0,
-                                'receptions': 0,
-                                'receiving_yards': 0,
-                                'receiving_tds': 0,
-                                'fumbles': 0,
-                                'fg_made': fg_made,
-                                'xp_made': xp_made
-                            }
-                        }
-                        continue  # Skip the standard projection calculation for K
-                    elif position == 'DST':
-                        # For DST, we need to handle defense-specific stats
-                        # DST projections are typically based on fantasy points directly
-                        dst_points = float(row.get('FPTS', 0) or 0)
-                        
-                        # Get DST-specific stats
-                        sacks = float(row.get('SACK', 0) or 0)
-                        interceptions = float(row.get('INT', 0) or 0)
-                        fumble_recoveries = float(row.get('FR', 0) or 0)
-                        forced_fumbles = float(row.get('FF', 0) or 0)
-                        defensive_tds = float(row.get('TD', 0) or 0)
-                        safeties = float(row.get('SAFETY', 0) or 0)
-                        points_allowed = float(row.get('PA', 0) or 0)
-                        yards_allowed = float(str(row.get('YDS_AGN', 0) or 0).replace(',', ''))
-                        
-                        # Set all other stats to 0 for DST
-                        passing_yards = 0
-                        passing_tds = 0
-                        passing_ints = 0
-                        rushing_yards = 0
-                        rushing_tds = 0
-                        receptions = 0
-                        receiving_yards = 0
-                        receiving_tds = 0
-                        fumbles = 0
-                        fg_made = 0
-                        xp_made = 0
-                        
-                        # Use the DST points directly for all scoring formats
-                        projections = {
-                            'non-ppr': dst_points,
-                            'ppr': dst_points,
-                            'half-ppr': dst_points
-                        }
-                        
-                        player_projections_cache[player_name] = {
-                            'position': position,
-                            'team': team,
-                            'projections': projections,
-                            'stats': {
-                                'passing_yards': 0,
-                                'passing_tds': 0,
-                                'passing_ints': 0,
-                                'rushing_yards': 0,
-                                'rushing_tds': 0,
-                                'receptions': 0,
-                                'receiving_yards': 0,
-                                'receiving_tds': 0,
-                                'fumbles': 0,
-                                'fg_made': 0,
-                                'xp_made': 0,
-                                'dst_points': dst_points,
-                                'sacks': sacks,
-                                'interceptions': interceptions,
-                                'fumble_recoveries': fumble_recoveries,
-                                'forced_fumbles': forced_fumbles,
-                                'defensive_tds': defensive_tds,
-                                'safeties': safeties,
-                                'points_allowed': points_allowed,
-                                'yards_allowed': yards_allowed
-                            }
-                        }
-                        continue  # Skip the standard projection calculation for DST
-                    else:  # Unknown position
-                        continue
-                    
-                    # Calculate projections for each scoring format
-                    projections = {
-                        'non-ppr': calculate_non_ppr_points(
-                            position, passing_yards, passing_tds, passing_ints,
-                            rushing_yards, rushing_tds, receptions, receiving_yards, 
-                            receiving_tds, fumbles, fg_made, xp_made
-                        ),
-                        'ppr': calculate_ppr_points(
-                            position, passing_yards, passing_tds, passing_ints,
-                            rushing_yards, rushing_tds, receptions, receiving_yards, 
-                            receiving_tds, fumbles, fg_made, xp_made
-                        ),
-                        'half-ppr': calculate_half_ppr_points(
-                            position, passing_yards, passing_tds, passing_ints,
-                            rushing_yards, rushing_tds, receptions, receiving_yards, 
-                            receiving_tds, fumbles, fg_made, xp_made
-                        )
-                    }
-                    
-                    player_projections_cache[player_name] = {
-                        'position': position,
-                        'team': team,
-                        'projections': projections,
-                        'stats': {
-                            'passing_yards': passing_yards,
-                            'passing_tds': passing_tds,
-                            'passing_ints': passing_ints,
-                            'rushing_yards': rushing_yards,
-                            'rushing_tds': rushing_tds,
-                            'receptions': receptions,
-                            'receiving_yards': receiving_yards,
-                            'receiving_tds': receiving_tds,
-                            'fumbles': fumbles,
-                            'fg_made': fg_made,
-                            'xp_made': xp_made
-                        }
-                    }
-                    
-                    if idx < 3:  # Print first 3 players for debugging
-                        print(f"  Cached {player_name}: {projections}")
-            else:
-                print(f"File not found: {filename}")
+        print(f"Processing {len(df)} players from OALFFL rankings...")
         
-        print(f"Cached projections for {len(player_projections_cache)} players")
+        for idx, row in df.iterrows():
+            player_name = row.get('Name', 'Unknown')
+            team = row.get('Team', '')
+            position = row.get('Pos', '')
+            projected_points = row.get('Points', 0)
+            
+            # Skip empty rows
+            if pd.isna(player_name) or player_name == '' or player_name == ' ':
+                continue
+            
+            # Convert position format (ST -> DST)
+            if position == 'ST':
+                position = 'DST'
+            
+            print(f"Processing player: {player_name} ({position}) - {projected_points} pts")
+            
+            # Use the projected points from OALFFL data for all scoring formats
+            # Since OALFFL rankings are typically for standard scoring, we'll use the same value
+            # for all formats (this can be adjusted if needed)
+            try:
+                projected_points = float(projected_points) if projected_points else 0.0
+            except (ValueError, TypeError):
+                projected_points = 0.0
+            
+            # Store projections for all scoring formats using OALFFL data
+            player_projections_cache[player_name] = {
+                'position': position,
+                'team': team,
+                'projections': {
+                    'non-ppr': projected_points,
+                    'ppr': projected_points,  # Using same value for now
+                    'half-ppr': projected_points  # Using same value for now
+                },
+                'stats': {
+                    'projected_points': projected_points
+                }
+            }
+        
+        print(f"Cached projections for {len(player_projections_cache)} players from OALFFL data")
         
     except Exception as e:
-        print(f"Error caching projections: {e}")
+        print(f"Error caching projections from OALFFL data: {e}")
         import traceback
         traceback.print_exc()
-        # Fall back to CSV data if FantasyPros files not available
         player_projections_cache = {}
 
 def calculate_non_ppr_points(position, passing_yards, passing_tds, passing_ints,
@@ -492,16 +308,12 @@ def calculate_half_ppr_points(position, passing_yards, passing_tds, passing_ints
 
 def get_player_projection(player_name, scoring_format=None):
     """Get player projection for the specified scoring format."""
-    global selected_scoring_format, custom_projections_cache
+    global selected_scoring_format
     
     if scoring_format is None:
         scoring_format = selected_scoring_format or 'non-ppr'
     
-    # Always check custom projections first (from Supabase cache)
-    custom_projection = get_custom_projection_for_player(player_name, scoring_format)
-    if custom_projection is not None:
-        return custom_projection
-    
+    # Custom projections are disabled as requested
     # Check cached projections from CSV files
     if player_name in player_projections_cache:
         projection = player_projections_cache[player_name]['projections'].get(scoring_format, 0)
@@ -518,6 +330,28 @@ def get_player_projection(player_name, scoring_format=None):
             pass
     
     return 0
+
+@app.route('/api/player_projection', methods=['GET'])
+def get_player_projection_endpoint():
+    """Get player projection via API endpoint."""
+    try:
+        player_name = request.args.get('player_name')
+        scoring_format = request.args.get('scoring_format', selected_scoring_format or 'non-ppr')
+        
+        if not player_name:
+            return jsonify({'error': 'Player name is required'}), 400
+        
+        projection = get_player_projection(player_name, scoring_format)
+        
+        return jsonify({
+            'success': True,
+            'player_name': player_name,
+            'scoring_format': scoring_format,
+            'projection': projection
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 def get_player_data(player_name, scoring_format=None):
     """Get complete player data including projection, ADP, team, bye week, and customization status."""
@@ -540,7 +374,7 @@ def get_player_data(player_name, scoring_format=None):
                 'adp': player.adp,
                 'bye_week': player.bye_week,
                 'projected_points': projected_points,
-                'is_customized': player.name in custom_projections_cache
+                'is_customized': False  # Custom projections disabled
             }
     
     # Fallback if player not found
@@ -551,82 +385,33 @@ def get_player_data(player_name, scoring_format=None):
         'adp': 999,
         'bye_week': 0,
         'projected_points': projected_points,
-        'is_customized': player_name in custom_projections_cache
+        'is_customized': False  # Custom projections disabled
     }
 
 def set_scoring_format(format_type):
-    """Set the scoring format and reload the draft assistant."""
+    """Set the scoring format without resetting the draft assistant."""
     global draft_assistant, selected_scoring_format
     
     if format_type not in ['ppr', 'non-ppr', 'half-ppr']:
         raise ValueError("Scoring format must be 'ppr', 'non-ppr', or 'half-ppr'")
     
-    # Only reload if the format is different
-    if selected_scoring_format != format_type:
-        selected_scoring_format = format_type
-        draft_assistant = None  # Force reload with new CSV
-        get_draft_assistant()  # Load the new data
-        
-        # Load custom projections from Supabase for the current user
-        if 'user_id' in session:
-            user_id = session['user_id']
-            supabase_projections = load_user_custom_projections_from_supabase(user_id)
-            custom_projections_cache.update(supabase_projections)
-            print(f"Loaded custom projections from Supabase for user {user_id}")
-        else:
-            # Fallback to local file if no user session
-            load_custom_projections_from_file()
-            print("No user session, loaded custom projections from local file")
-        
-        print(f"Scoring format changed to {format_type}, custom projections reloaded")
-
-def load_user_custom_projections_to_assistant():
-    """Load user's custom projections into the draft assistant."""
-    global draft_assistant, custom_projections_cache
+    # Update the scoring format
+    selected_scoring_format = format_type
     
-    if not draft_assistant or 'user_id' not in session:
-        return
+    # If draft assistant exists, update its scoring format instead of recreating it
+    if draft_assistant is not None:
+        draft_assistant.set_scoring_format(format_type)
+        print(f"Updated existing draft assistant scoring format to {format_type}")
+    else:
+        # Only create new draft assistant if one doesn't exist
+        get_draft_assistant()
+        print(f"Created new draft assistant with scoring format {format_type}")
     
-    try:
-        user_id = session['user_id']
-        
-        if not supabase:
-            # Development mode - load from development cache
-            print(f"Loading custom projections from dev_custom_projections for user {user_id}")
-            custom_projections_cache = dev_custom_projections.get(user_id, {})
-            return
-        
-        # Get user's custom projections from database
-        response = supabase.table('user_custom_projections').select('*').eq('user_id', user_id).execute()
-        
-        # Apply custom projections to the cache
-        for record in response.data:
-            player_name = record['player_name']
-            custom_stats = record['custom_stats']
-            
-            # Store custom projections in the correct format
-            custom_projections_cache[player_name] = {
-                'stats': custom_stats,
-                'projections': {
-                    'non-ppr': calculate_projection_from_stats(
-                        custom_stats, 'non-ppr'
-                    ),
-                    'ppr': calculate_projection_from_stats(
-                        custom_stats, 'ppr'
-                    ),
-                    'half-ppr': calculate_projection_from_stats(
-                        custom_stats, 'half-ppr'
-                    )
-                }
-            }
-        
-        print(f"Loaded {len(response.data)} custom projections for user {user_id}")
-        
-    except Exception as e:
-        print(f"Error loading custom projections: {e}")
+    print(f"Scoring format set to {format_type} (custom projections disabled)")
 
-# Development mode custom projections cache
-dev_custom_projections = {}
+# Custom projections function removed - using OALFFL rankings only
+
+# Development mode custom projections cache removed
 
 @app.route('/health')
 def health_check():
@@ -656,7 +441,7 @@ def health_check():
             projections_status = f"error: {str(e)}"
         
         return jsonify({
-            'message': 'PickProphet is running',
+            'message': 'James Clessuras FF is running',
             'status': 'healthy',
             'timestamp': datetime.now().isoformat(),
             'components': {
@@ -668,7 +453,7 @@ def health_check():
     except Exception as e:
         # Even if health check fails, return a response so Railway doesn't think the app is down
         return jsonify({
-            'message': 'PickProphet health check encountered an error',
+            'message': 'James Clessuras FF health check encountered an error',
             'status': 'degraded',
             'timestamp': datetime.now().isoformat(),
             'error': str(e)
@@ -767,7 +552,7 @@ def auth_login():
             session['user_email'] = email
             
             # Clear cache for new user login
-            custom_projections_cache.clear()
+            # Custom projections disabled
             print(f"Cleared cache for new user login: {user_uuid}")
             
             # In development mode, we can't create users in Supabase, so we'll handle this differently
@@ -794,7 +579,7 @@ def auth_login():
             session['user_email'] = user.email
             
             # Clear cache for new user login
-            custom_projections_cache.clear()
+            # Custom projections disabled
             print(f"Cleared cache for new user login: {user.id}")
             
             # Ensure user exists in the users table
@@ -856,7 +641,7 @@ def auth_register():
             session['user_email'] = email
             
             # Clear cache for new user registration
-            custom_projections_cache.clear()
+            # Custom projections disabled
             print(f"Cleared cache for new user registration: {user_uuid}")
             
             return jsonify({
@@ -880,7 +665,7 @@ def auth_register():
             session['user_email'] = user.email
             
             # Clear cache for new user registration
-            custom_projections_cache.clear()
+            # Custom projections disabled
             print(f"Cleared cache for new user registration: {user.id}")
             
             # Also create a record in the users table
@@ -925,7 +710,7 @@ def logout():
     if 'user_id' in session:
         user_id = session['user_id']
         print(f"Clearing cache for user {user_id} during logout")
-        custom_projections_cache.clear()
+        # Custom projections disabled
     session.clear()
     return redirect(url_for('login'))
 
@@ -936,7 +721,7 @@ def auth_logout():
     if 'user_id' in session:
         user_id = session['user_id']
         print(f"Clearing cache for user {user_id} during logout")
-        custom_projections_cache.clear()
+        # Custom projections disabled
     session.clear()
     return jsonify({'success': True, 'message': 'Logout successful'})
 
@@ -951,7 +736,7 @@ def get_user_custom_projections():
             # Development mode - return local projections
             return jsonify({
                 'success': True,
-                'custom_projections': custom_projections_cache
+                'custom_projections': {}
             })
         
         response = supabase.table('user_custom_projections').select('*').eq('user_id', user_id).execute()
@@ -981,17 +766,12 @@ def save_user_custom_projection():
         
         if not supabase:
             # Development mode - save to local cache and file
-            global custom_projections_cache
+            # Custom projections disabled
             
             # Save to cache
-            custom_projections_cache[player_name] = custom_stats
+            # Custom projections disabled
             
-            # Save to file
-            try:
-                save_custom_projections_to_file()
-                print(f"Saved custom projection for {player_name} to local file")
-            except Exception as e:
-                print(f"Warning: Could not save to local file: {e}")
+            # Custom projections disabled
             
             return jsonify({
                 'success': True,
@@ -1161,21 +941,8 @@ def save_completed_draft():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def refresh_custom_projections():
-    """Automatically refresh custom projections to ensure they're always available."""
-    global custom_projections_cache
-    
-    try:
-        # Load from file first
-        load_custom_projections_from_file()
-        
-        # Then load from Supabase if user is logged in
-        if 'user_id' in session:
-            load_user_custom_projections_to_assistant()
-        
-        return True
-    except Exception as e:
-        print(f"Error refreshing custom projections: {e}")
-        return False
+    """Custom projections disabled - using OALFFL rankings only."""
+    return False
 
 @app.route('/api/set_scoring_format', methods=['POST'])
 def set_scoring_format_endpoint():
@@ -1189,14 +956,11 @@ def set_scoring_format_endpoint():
         
         set_scoring_format(format_type)
         
-        # Automatically refresh custom projections
-        refresh_success = refresh_custom_projections()
-        
         return jsonify({
             'success': True,
             'message': f'Scoring format set to {format_type.upper()}',
             'format': format_type,
-            'custom_projections_refreshed': refresh_success
+            'custom_projections_refreshed': False
         })
     except Exception as e:
         print(f"Error setting scoring format: {e}")
@@ -1236,8 +1000,9 @@ def initialize_draft():
     try:
         data = request.get_json()
         num_teams = data.get('num_teams', 12)
-        user_position = data.get('user_position', 1)
+        user_position = data.get('user_position', data.get('user_draft_position', 1))
         scoring_format = data.get('scoring_format', 'ppr')
+        roster_constraints = data.get('roster_constraints', {})
         
         # Get user ID from session
         user_id = session.get('user_id')
@@ -1253,13 +1018,26 @@ def initialize_draft():
         # Reset draft state
         global draft_assistant
         if draft_assistant:
+            # Set the user draft position and number of teams before resetting
+            draft_assistant.set_user_draft_position(user_position)
+            draft_assistant.set_num_teams(num_teams)
+            
+            # Set roster constraints if provided
+            if roster_constraints:
+                draft_assistant.set_roster_constraints(roster_constraints)
+            
             draft_assistant.reset_draft()
             print(f"Draft reset: {num_teams} teams, {draft_assistant.total_picks} total picks")
             print(f"Draft initialized: {num_teams} teams, user position {user_position}")
             print(f"Roster constraints: {draft_assistant.roster_constraints}")
             print(f"Scoring format: {scoring_format}")
             print(f"Draft initialized flag: {draft_assistant.draft_initialized}")
-            print(f"Custom projections loaded: {len(custom_projections_cache)} custom projections")
+            print("Custom projections disabled as requested")
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Draft assistant not initialized. Please refresh the page and try again.'
+            })
         
         return jsonify({
             'success': True,
@@ -1269,7 +1047,7 @@ def initialize_draft():
                 'user_position': user_position,
                 'scoring_format': scoring_format,
                 'total_picks': draft_assistant.total_picks if draft_assistant else 0,
-                'custom_projections_loaded': len(custom_projections_cache)
+                'custom_projections_loaded': 0
             }
         })
         
@@ -1282,57 +1060,67 @@ def get_status():
     """Get current draft status."""
     try:
         assistant = get_draft_assistant()
+        status = assistant.get_draft_status()
+        status['user_draft_position'] = assistant.user_draft_position
         return jsonify({
             'success': True,
-            'status': assistant.get_draft_status()
+            'status': status
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/available_players')
 def get_available_players():
-    """Get list of available players."""
+    """Get list of available players from draft assistant."""
     try:
         assistant = get_draft_assistant()
-        position = request.args.get('position')
         
-        # Handle position mapping (frontend uses DEF, system uses DST)
-        if position == 'DEF':
-            position = 'DST'
+        # Get available players from the draft assistant
+        available_players = assistant.get_available_players()
         
-        # Load latest custom projections from Supabase before getting available players
-        if 'user_id' in session:
-            user_id = session['user_id']
-            supabase_projections = load_user_custom_projections_from_supabase(user_id)
-            custom_projections_cache.update(supabase_projections)
-            print(f"Loaded latest custom projections from Supabase for user {user_id} before getting available players")
-        
-        players = assistant.get_available_players(position)
-        player_list = []
-        
-        # Sort by ADP and show all available players
-        for player in players:
-            # Get complete player data using the new system (includes custom projections)
-            player_data = get_player_data(player.name, selected_scoring_format)
-            
-            player_list.append({
-                'name': player_data['name'],
-                'position': player_data['position'],
-                'team': player_data['team'],
-                'adp': player_data['adp'],
-                'projected_points': player_data['projected_points'],
-                'bye_week': player_data['bye_week'],
-                'is_customized': player_data['is_customized']
+        # Convert Player objects to dictionaries
+        players = []
+        for player in available_players:
+            players.append({
+                'name': player.name,
+                'position': player.position,
+                'team': player.team,
+                'adp': player.adp,
+                'projected_points': assistant.get_player_projected_points(player),
+                'bye_week': player.bye_week,
+                'is_customized': player.name in assistant.custom_projections
             })
+        
+        # Filter by position if requested
+        position = request.args.get('position')
+        if position and position != '' and position != 'All Positions':
+            # Handle position mapping (frontend uses DEF, system uses DST)
+            if position == 'DEF':
+                position = 'DST'
+            players = [p for p in players if p['position'] == position]
+        
+        # Sort by ADP
+        players.sort(key=lambda p: p['adp'])
+        
+        print(f"Returning {len(players)} available players from draft assistant")
         
         return jsonify({
             'success': True,
-            'players': player_list,
+            'players': players,
             'total_available': len(players),
-            'scoring_format': selected_scoring_format
+            'scoring_format': assistant.scoring_format
         })
+        
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        print(f"Exception in get_available_players: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'players': [],
+            'total_available': 0
+        })
 
 @app.route('/api/search_players')
 def search_players():
@@ -1379,8 +1167,8 @@ def draft_player():
     try:
         assistant = get_draft_assistant()
         
-        # Check if draft is initialized
-        if not assistant.draft_initialized:
+        # Check if draft is initialized and user position is set
+        if not assistant.draft_initialized or assistant.user_draft_position == 0:
             return jsonify({
                 'success': False,
                 'error': 'Draft must be initialized before drafting players'
@@ -1417,8 +1205,8 @@ def get_recommendations():
         assistant = get_draft_assistant()
         num_recommendations = request.args.get('num', 5, type=int)
         
-        # Check if draft is initialized
-        if not assistant.draft_initialized:
+        # Check if draft is initialized and user position is set
+        if not assistant.draft_initialized or assistant.user_draft_position == 0:
             return jsonify({
                 'success': True,
                 'recommendations': [],
@@ -1482,8 +1270,8 @@ def run_simulation():
         assistant = get_draft_assistant()
         num_recommendations = request.args.get('num', 5, type=int)
         
-        # Check if draft is initialized
-        if not assistant.draft_initialized:
+        # Check if draft is initialized and user position is set
+        if not assistant.draft_initialized or assistant.user_draft_position == 0:
             return jsonify({
                 'success': False,
                 'error': 'Draft must be initialized before running simulations'
@@ -1497,12 +1285,8 @@ def run_simulation():
                 'error': 'Simulations can only be run on user turn'
             })
         
-        # Load latest custom projections from Supabase before running simulations
-        if 'user_id' in session:
-            user_id = session['user_id']
-            supabase_projections = load_user_custom_projections_from_supabase(user_id)
-            custom_projections_cache.update(supabase_projections)
-            print(f"Loaded latest custom projections from Supabase for user {user_id} before simulation")
+        # Custom projections are disabled as requested
+        print("Custom projections disabled - using OALFFL rankings only")
         
         # Run simulations using web app's projection system
         try:
@@ -1524,8 +1308,8 @@ def run_simulation():
 def run_simulations_with_web_projections(assistant, num_recommendations=40):
     """Run simulations using web app's projection system."""
     try:
-        if not assistant or not assistant.draft_initialized:
-            print("Draft not initialized or assistant is None")
+        if not assistant or not assistant.draft_initialized or assistant.user_draft_position == 0:
+            print("Draft not initialized or assistant is None or user position not set")
             return []
         
         current_pick_info = assistant.get_current_pick_info()
@@ -1545,7 +1329,7 @@ def run_simulations_with_web_projections(assistant, num_recommendations=40):
         players_with_projections = []
         
         print("Pre-calculating projections for all available players...")
-        print(f"Using custom projections cache with {len(custom_projections_cache)} entries")
+        print("Using OALFFL rankings projections (custom projections disabled)")
         
         for player in available_players:
             # This will use custom projections from Supabase if available
@@ -1676,7 +1460,7 @@ def run_simulations_with_web_projections(assistant, num_recommendations=40):
                 'adp': player.adp,
                 'projected_points': projection_cache[player.name],
                 'expected_season_score': score,
-                'is_customized': player.name in custom_projections_cache
+                'is_customized': False  # Custom projections disabled
             })
         
         return recommendations
@@ -1871,10 +1655,13 @@ def calculate_roster_value_for_simulation_web_projections(assistant, roster, pro
     # Calculate value: starters get full value, bench gets reduced value
     total_value = 0.0
     
-    # Starters get full projected points
+    # Starters get full projected points (except K and DST get 40%)
     for player in starters:
         projected_points = projection_cache.get(player.name, get_player_projection(player.name, selected_scoring_format))
-        total_value += projected_points
+        if player.position in ['K', 'DST']:
+            total_value += projected_points * 0.40  # 40% starting value for K and DST
+        else:
+            total_value += projected_points  # Full value for other positions
     
     # Bench players get reduced value based on depth
     bench_counts = {'QB': 0, 'RB': 0, 'WR': 0, 'TE': 0, 'K': 0, 'DST': 0}
@@ -1983,42 +1770,37 @@ def calculate_bench_value_for_player_web_projections(player, team_roster, projec
     
     if player.position == 'QB':
         if bench_depth == 0:
-            return player_projected * 0.10  # 10% for 1st bench
+            return player_projected * 0.20  # 20% for 1st bench QB
         else:
-            return player_projected * 0.01  # 1% for 2nd+ bench
+            return 0.0  # All following QBs worth 0%
     elif player.position == 'RB':
         if bench_depth == 0:
-            return player_projected * 0.27  # 27% for 1st bench
+            return player_projected * 0.22  # 22% for 1st bench RB
         elif bench_depth == 1:
-            return player_projected * 0.18  # 18% for 2nd bench
+            return player_projected * 0.14  # 14% for 2nd bench RB
         elif bench_depth == 2:
-            return player_projected * 0.15  # 15% for 3rd bench
+            return player_projected * 0.12  # 12% for 3rd bench RB
+        elif bench_depth == 3:
+            return player_projected * 0.05  # 5% for 4th bench RB
         else:
-            return player_projected * 0.01  # 1% for 4th+ bench
+            return player_projected * 0.05  # 5% for 5th+ bench RB
     elif player.position == 'WR':
         if bench_depth == 0:
-            return player_projected * 0.27  # 27% for 1st bench
+            return player_projected * 0.22  # 22% for 1st bench WR
         elif bench_depth == 1:
-            return player_projected * 0.18  # 18% for 2nd bench
+            return player_projected * 0.14  # 14% for 2nd bench WR
         elif bench_depth == 2:
-            return player_projected * 0.10  # 10% for 3rd bench
+            return player_projected * 0.12  # 12% for 3rd bench WR
+        elif bench_depth == 3:
+            return player_projected * 0.05  # 5% for 4th bench WR
         else:
-            return player_projected * 0.01  # 1% for 4th+ bench
+            return player_projected * 0.05  # 5% for 5th+ bench WR
     elif player.position == 'TE':
-        if bench_depth == 0:
-            return player_projected * 0.05  # 5% for 1st bench
-        else:
-            return player_projected * 0.01  # 1% for 2nd+ bench
+        return 0.0  # All TEs have 0% bench value
     elif player.position == 'K':
-        if bench_depth == 0:
-            return player_projected * 0.01  # 1% for 1st bench
-        else:
-            return player_projected * 0.01  # 1% for 2nd+ bench
+        return 0.0  # Kickers have 0% bench value
     elif player.position == 'DST':
-        if bench_depth == 0:
-            return player_projected * 0.01  # 1% for 1st bench
-        else:
-            return player_projected * 0.01  # 1% for 2nd+ bench
+        return 0.0  # Defense has 0% bench value
     else:
         return 0.0
 
@@ -2091,7 +1873,7 @@ def get_user_roster():
                     'team': player.team,
                     'projected_points': projected_points,
                     'bye_week': player.bye_week,
-                    'is_customized': player.name in custom_projections_cache
+                    'is_customized': False  # Custom projections disabled
                 })
                 assigned_players.add(player.name)
             elif player.position == 'K' and len(roster_display['K']) < assistant.roster_constraints['K']:
@@ -2101,7 +1883,7 @@ def get_user_roster():
                     'team': player.team,
                     'projected_points': projected_points,
                     'bye_week': player.bye_week,
-                    'is_customized': player.name in custom_projections_cache
+                    'is_customized': False  # Custom projections disabled
                 })
                 assigned_players.add(player.name)
             elif player.position == 'DST' and len(roster_display['DST']) < assistant.roster_constraints['DST']:
@@ -2111,7 +1893,7 @@ def get_user_roster():
                     'team': player.team,
                     'projected_points': projected_points,
                     'bye_week': player.bye_week,
-                    'is_customized': player.name in custom_projections_cache
+                    'is_customized': False  # Custom projections disabled
                 })
                 assigned_players.add(player.name)
         
@@ -2130,7 +1912,7 @@ def get_user_roster():
                     'team': player.team,
                     'projected_points': projected_points,
                     'bye_week': player.bye_week,
-                    'is_customized': player.name in custom_projections_cache
+                    'is_customized': False  # Custom projections disabled
                 })
                 assigned_players.add(player.name)
             elif player.position == 'RB' and len(roster_display['RB']) < assistant.roster_constraints['RB']:
@@ -2140,7 +1922,7 @@ def get_user_roster():
                     'team': player.team,
                     'projected_points': projected_points,
                     'bye_week': player.bye_week,
-                    'is_customized': player.name in custom_projections_cache
+                    'is_customized': False  # Custom projections disabled
                 })
                 assigned_players.add(player.name)
             elif player.position == 'TE' and len(roster_display['TE']) < assistant.roster_constraints['TE']:
@@ -2150,7 +1932,7 @@ def get_user_roster():
                     'team': player.team,
                     'projected_points': projected_points,
                     'bye_week': player.bye_week,
-                    'is_customized': player.name in custom_projections_cache
+                    'is_customized': False  # Custom projections disabled
                 })
                 assigned_players.add(player.name)
         
@@ -2169,7 +1951,7 @@ def get_user_roster():
                     'team': player.team,
                     'projected_points': projected_points,
                     'bye_week': player.bye_week,
-                    'is_customized': player.name in custom_projections_cache
+                    'is_customized': False  # Custom projections disabled
                 })
                 assigned_players.add(player.name)
                 break
@@ -2189,7 +1971,7 @@ def get_user_roster():
                     'team': player.team,
                     'projected_points': projected_points,
                     'bye_week': player.bye_week,
-                    'is_customized': player.name in custom_projections_cache
+                    'is_customized': False  # Custom projections disabled
                 })
                 assigned_players.add(player.name)
         
@@ -2309,7 +2091,7 @@ def get_user_roster_detailed():
                 'season_projection': round(projected_points, 1),
                 'week1_projection': round(projected_points / 17, 1),
                 'bye_week': player.bye_week,
-                'is_customized': player.name in custom_projections_cache
+                'is_customized': False  # Custom projections disabled
             })
         
         bench_data = []
@@ -2324,7 +2106,7 @@ def get_user_roster_detailed():
                 'season_projection': round(bench_value, 1),  # Use bench value, not full projection
                 'week1_projection': round(bench_value / 17, 1),
                 'bye_week': player.bye_week,
-                'is_customized': player.name in custom_projections_cache
+                'is_customized': False  # Custom projections disabled
             })
         
         # Calculate projections using web app's projection system
@@ -2400,8 +2182,8 @@ def reset_draft():
     try:
         assistant = get_draft_assistant()
         
-        # Check if draft is initialized
-        if not assistant.draft_initialized:
+        # Check if draft is initialized and user position is set
+        if not assistant.draft_initialized or assistant.user_draft_position == 0:
             return jsonify({
                 'success': False,
                 'error': 'Draft must be initialized before it can be reset'
@@ -2412,6 +2194,32 @@ def reset_draft():
         return jsonify({
             'success': True,
             'message': 'Draft reset successfully',
+            'status': assistant.get_draft_status()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/set_user_position', methods=['POST'])
+def set_user_position():
+    """Set the user's draft position."""
+    try:
+        assistant = get_draft_assistant()
+        data = request.get_json()
+        user_position = data.get('user_position')
+        
+        if not user_position or user_position < 1 or user_position > assistant.num_teams:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid user position. Must be between 1 and {assistant.num_teams}'
+            })
+        
+        # Set the user draft position
+        assistant.set_user_draft_position(user_position)
+        
+        return jsonify({
+            'success': True,
+            'message': f'User draft position set to {user_position}',
+            'user_draft_position': assistant.user_draft_position,
             'status': assistant.get_draft_status()
         })
     except Exception as e:
@@ -2467,6 +2275,17 @@ def get_simulation_status():
     """Get simulation status."""
     try:
         assistant = get_draft_assistant()
+        
+        # Check if draft is initialized first
+        if not assistant or not assistant.draft_initialized or assistant.user_draft_position == 0:
+            return jsonify({
+                'success': True,
+                'is_running': False,
+                'is_user_turn': False,
+                'draft_initialized': False,
+                'status': 'Draft not initialized'
+            })
+        
         pick_info = assistant.get_current_pick_info()
         
         # Only run simulation if it's user's turn
@@ -2475,7 +2294,9 @@ def get_simulation_status():
         return jsonify({
             'success': True,
             'is_running': is_running,
-            'is_user_turn': pick_info.get("is_user_turn", False)
+            'is_user_turn': pick_info.get("is_user_turn", False),
+            'draft_initialized': True,
+            'status': pick_info.get("status", "Unknown")
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -2486,7 +2307,7 @@ def get_user_roster_value():
     try:
         assistant = get_draft_assistant()
         
-        if not assistant.draft_initialized:
+        if not assistant.draft_initialized or assistant.user_draft_position == 0:
             return jsonify({
                 'success': True,
                 'value': 0.0,
@@ -2521,7 +2342,7 @@ def get_draft_complete_status():
     try:
         assistant = get_draft_assistant()
         
-        if not assistant.draft_initialized:
+        if not assistant.draft_initialized or assistant.user_draft_position == 0:
             return jsonify({
                 'success': True,
                 'is_complete': False,
@@ -2550,7 +2371,7 @@ def get_draft_complete_status():
 @app.route('/api/load_players_with_custom_projections')
 def load_players_with_custom_projections():
     """Load players with custom projections and raw stats for customization."""
-    global custom_projections_cache
+    # Custom projections disabled
     try:
         assistant = get_draft_assistant()
         players_data = []
@@ -2824,11 +2645,8 @@ def reset_all_players():
         else:
             return jsonify({'success': False, 'error': 'Supabase not available'}), 500
         
-        # Clear local cache
-        global custom_projections_cache
-        custom_projections_cache = {}
-        save_custom_projections_to_file()
-        print("Cleared all custom projections from local cache")
+        # Custom projections disabled
+        print("Custom projections disabled")
         
         return jsonify({
             'success': True,
@@ -3033,14 +2851,13 @@ def debug_custom_projections():
 @app.route('/api/test_custom_projections')
 def test_custom_projections():
     """Test endpoint to verify custom projections are working."""
-    global custom_projections_cache
+    # Custom projections disabled
     try:
         # Test with a sample player
         test_player = "Ja'Marr Chase"
         projection = get_player_projection(test_player, selected_scoring_format)
         
-        # Force reload cache
-        load_custom_projections_from_file()
+        # Custom projections disabled
         
         return jsonify({
             'success': True,
@@ -3394,41 +3211,29 @@ def load_user_custom_projections_from_supabase(user_id):
         return {}
 
 def initialize_draft_with_user_data(user_id):
-    """Initialize draft with user's custom projections from Supabase."""
-    global custom_projections_cache
-    
+    """Initialize draft with user data (custom projections disabled)."""
     if not user_id:
         print("No user_id provided, skipping custom projections load")
         return
     
     print(f"Initializing draft with user data for user_id: {user_id}")
-    
-    # Clear the cache for this user to ensure fresh data
-    custom_projections_cache.clear()
-    
-    # Load custom projections from Supabase and store in cache
-    supabase_projections = load_user_custom_projections_from_supabase(user_id)
-    custom_projections_cache.update(supabase_projections)
-    
-    # Also load from local file as backup (but don't override user-specific data)
-    local_projections = load_custom_projections_from_file()
-    # Only add local projections if they don't conflict with user-specific ones
-    for player, stats in local_projections.items():
-        if player not in custom_projections_cache:
-            custom_projections_cache[player] = stats
-    
-    print(f"Custom projections loaded: {len(custom_projections_cache)} custom projections for user {user_id}")
+    print("Custom projections are disabled as requested")
 
 def initialize_app():
     """Initialize all app components on startup."""
     try:
-        print("Initializing PickProphet application...")
+        print("Initializing James Clessuras FF application...")
         
         # Initialize Supabase connection
         if supabase:
             print("✓ Supabase connection established")
         else:
             print("⚠️ Supabase not configured, running in development mode")
+        
+        # PRE-LOAD PLAYERS GLOBALLY - This ensures players are always available
+        print("🚀 Pre-loading players globally...")
+        load_players_globally()
+        print("✓ Players pre-loaded globally")
         
         # Initialize draft assistant
         assistant = get_draft_assistant()
@@ -3442,14 +3247,10 @@ def initialize_app():
             print(f"⚠️ Warning: Could not load projections: {e}")
         
         # Load custom projections (will be loaded per-user during draft initialization)
-        try:
-            # Initialize empty cache - will be populated per-user
-            custom_projections_cache.clear()
-            print("✓ Custom projections cache initialized")
-        except Exception as e:
-            print(f"⚠️ Warning: Could not initialize custom projections cache: {e}")
+        # Custom projections are disabled as requested
+        print("✓ Custom projections disabled")
         
-        print("✓ PickProphet initialization complete")
+        print("✓ James Clessuras FF initialization complete")
         return True
     except Exception as e:
         print(f"❌ Error during initialization: {e}")
@@ -3460,5 +3261,5 @@ if not initialize_app():
     print("Warning: App initialization had issues, but continuing...")
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 6007))
+    port = int(os.environ.get('PORT', 3000))
     app.run(debug=False, host='0.0.0.0', port=port) 

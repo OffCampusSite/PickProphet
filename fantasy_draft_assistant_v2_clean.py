@@ -29,7 +29,7 @@ class FantasyDraftAssistant:
         
         # League settings (configurable)
         self.num_teams = 12
-        self.user_draft_position = 1
+        self.user_draft_position = 0  # Will be set when draft is initialized
         self.current_round = 1
         self.current_pick = 1
         self.draft_order = []
@@ -39,7 +39,7 @@ class FantasyDraftAssistant:
         
         # Roster constraints (configurable)
         self.roster_constraints = {
-            'QB': 1,
+            'QB': 2,
             'WR': 2,
             'RB': 2,
             'TE': 1,
@@ -89,6 +89,44 @@ class FantasyDraftAssistant:
     def set_scoring_format(self, scoring_format: str):
         """Set the scoring format for the draft assistant."""
         self.scoring_format = scoring_format
+    
+    def set_user_draft_position(self, position: int):
+        """Set the user's draft position (1-based)."""
+        if 1 <= position <= self.num_teams:
+            self.user_draft_position = position
+            self._generate_draft_order()  # Regenerate draft order with new position
+        else:
+            raise ValueError(f"Invalid draft position: {position}. Must be between 1 and {self.num_teams}")
+    
+    def set_num_teams(self, num_teams: int):
+        """Set the number of teams in the draft."""
+        if num_teams < 2 or num_teams > 20:
+            raise ValueError(f"Invalid number of teams: {num_teams}. Must be between 2 and 20")
+        
+        self.num_teams = num_teams
+        # Calculate total picks based on roster constraints
+        total_picks_per_team = sum(self.roster_constraints.values())
+        self.total_picks = total_picks_per_team * self.num_teams
+        
+        # Update team names
+        self.teams = [f'Team {i+1}' for i in range(self.num_teams)]
+        
+        # Update drafted players dictionary
+        self.drafted_players = {f'Team {i+1}': [] for i in range(self.num_teams)}
+        
+        # Regenerate draft order
+        self._generate_draft_order()
+    
+    def set_roster_constraints(self, roster_constraints: dict):
+        """Set custom roster constraints for the league."""
+        # Update the roster constraints
+        for position, count in roster_constraints.items():
+            if position in self.roster_constraints:
+                self.roster_constraints[position] = count
+        
+        # Regenerate draft order since roster constraints changed
+        self._generate_draft_order()
+        print(f"Updated roster constraints: {self.roster_constraints}")
     
     def get_player_projected_points(self, player: Player, scoring_format: Optional[str] = None) -> float:
         """Get projected points for a player, using custom projections if available."""
@@ -264,25 +302,33 @@ class FantasyDraftAssistant:
             return 0.0
     
     def load_players(self):
-        """Load player data from FantasyPros CSV files and create a comprehensive dataframe."""
+        """Load player data from OALFFL rankings CSV file."""
         try:
-            # Create a comprehensive dataframe from all sources
             all_players = []
             
-            # Load WeeklyFantasyFootballCheatingSheet.csv first as the primary source
+            # Load the OALFFL rankings CSV file
             try:
-                main_df = pd.read_csv('WeeklyFantasyFootballCheatingSheet.csv')
-                print(f"Loaded {len(main_df)} players from WeeklyFantasyFootballCheatingSheet.csv")
+                # Skip the first 4 rows and use the 5th row as header
+                main_df = pd.read_csv(self.csv_file_path, skiprows=4, header=0)
+                # The first row contains the actual column names, so we need to use it as header
+                main_df.columns = main_df.iloc[0]
+                main_df = main_df.drop(main_df.index[0])
+                main_df = main_df.reset_index(drop=True)
+                print(f"Loaded {len(main_df)} players from {self.csv_file_path}")
                 
                 for _, row in main_df.iterrows():
-                    if pd.notna(row['Name']) and str(row['Name']).strip() != '':
-                        # Get basic info from main CSV
+                    # Skip header rows and empty rows
+                    if pd.notna(row['Name']) and str(row['Name']).strip() != '' and str(row['Name']).strip() != 'Name':
+                        # Get basic info from OALFFL CSV
                         name = str(row['Name']).strip()
-                        position = str(row['Position']).strip()
+                        position = str(row['Pos']).strip()
+                        # Convert ST to DST for consistency
+                        if position == 'ST':
+                            position = 'DST'
                         team = str(row['Team']).strip()
                         
-                        # Handle ADP
-                        adp_value = row['ADP']
+                        # Handle ADP (Rank = ADP)
+                        adp_value = row['Rank']
                         if pd.notna(adp_value) and adp_value != '-' and adp_value != '':
                             try:
                                 adp = float(adp_value)
@@ -292,7 +338,7 @@ class FantasyDraftAssistant:
                             adp = 999.0
                 
                         # Handle bye week
-                        bye_value = row['Bye_Week']
+                        bye_value = row['Bye']
                         if pd.notna(bye_value) and bye_value != '-' and bye_value != '':
                             try:
                                 bye_week = int(bye_value)
@@ -302,7 +348,7 @@ class FantasyDraftAssistant:
                             bye_week = 0
                 
                         # Handle projected points
-                        proj_value = row['Proj_Pts']
+                        proj_value = row['Points']
                         if pd.notna(proj_value) and proj_value != '-' and proj_value != '':
                             try:
                                 projected_points = float(proj_value)
@@ -324,9 +370,9 @@ class FantasyDraftAssistant:
                         all_players.append(player)
                         
             except Exception as e:
-                print(f"Error loading main CSV: {e}")
+                print(f"Error loading OALFFL rankings CSV: {e}")
             
-            # Now enhance with FantasyPros data for better scoring calculations
+            # FantasyPros data loading removed - using only OALFFL rankings
             try:
                 # Load QB data for enhanced scoring
                 qb_df = pd.read_csv('FantasyPros_Fantasy_Football_Projections_QB (1).csv')
@@ -476,8 +522,8 @@ class FantasyDraftAssistant:
                 print(f"Error loading DEF data: {e}")
             
             self.players = all_players
-            print(f"Loaded {len(self.players)} players from comprehensive data sources")
-            print(f"Stored raw stats for {len(self.raw_stats)} players")
+            self.available_players = set(self.players)
+            print(f"Loaded {len(self.players)} players from OALFFL rankings")
             
         except Exception as e:
             print(f"Error loading CSV files: {e}")
@@ -986,7 +1032,10 @@ class FantasyDraftAssistant:
         if self._cached_recommendations:
             return self._cached_recommendations[:num_recommendations]
         
-        return []
+        # Generate new recommendations if not cached
+        recommendations = self.run_simulations(num_recommendations)
+        self._cached_recommendations = recommendations
+        return recommendations
     
     def _simulate_draft_with_player_simple(self, candidate_player: Player) -> float:
         """
@@ -1294,25 +1343,35 @@ class FantasyDraftAssistant:
                 bench_counts[p.position] += 1
         bench_depth = bench_counts.get(player.position, 0)
         
-        if player.position in ['RB', 'WR']:
+        if player.position == 'QB':
             if bench_depth == 0:
-                return player.projected_points * 0.30
+                return player.projected_points * 0.20  # 20% for 1st bench QB
+            else:
+                return 0.0  # All following QBs worth 0%
+        elif player.position == 'RB':
+            if bench_depth == 0:
+                return player.projected_points * 0.22  # 22% for 1st bench RB
             elif bench_depth == 1:
-                return player.projected_points * 0.22
+                return player.projected_points * 0.14  # 14% for 2nd bench RB
             elif bench_depth == 2:
-                return player.projected_points * 0.14
+                return player.projected_points * 0.12  # 12% for 3rd bench RB
+            elif bench_depth == 3:
+                return player.projected_points * 0.05  # 5% for 4th bench RB
             else:
-                return player.projected_points * 0.05
-        elif player.position == 'QB':
+                return player.projected_points * 0.05  # 5% for 5th+ bench RB
+        elif player.position == 'WR':
             if bench_depth == 0:
-                return player.projected_points * 0.13
+                return player.projected_points * 0.22  # 22% for 1st bench WR
+            elif bench_depth == 1:
+                return player.projected_points * 0.14  # 14% for 2nd bench WR
+            elif bench_depth == 2:
+                return player.projected_points * 0.12  # 12% for 3rd bench WR
+            elif bench_depth == 3:
+                return player.projected_points * 0.05  # 5% for 4th bench WR
             else:
-                return player.projected_points * 0.03
+                return player.projected_points * 0.05  # 5% for 5th+ bench WR
         elif player.position == 'TE':
-            if bench_depth == 0:
-                return player.projected_points * 0.10
-            else:
-                return 0.0
+            return 0.0  # All TEs have 0% bench value
         else:
             return 0.0
 
@@ -1350,7 +1409,13 @@ class FantasyDraftAssistant:
                 bench.append(p)
         
         # Calculate value
-        value = sum(p.projected_points for p in starters)
+        # Calculate value - K and DEF get 40% starting value, others get full value
+        value = 0.0
+        for p in starters:
+            if p.position in ['K', 'DEF']:
+                value += p.projected_points * 0.40  # 40% starting value for K and DEF
+            else:
+                value += p.projected_points  # Full value for other positions
         
         # For bench, use new bench value logic
         bench_counts = {'QB': 0, 'RB': 0, 'WR': 0, 'TE': 0}
@@ -1394,7 +1459,13 @@ class FantasyDraftAssistant:
                 bench.append(p)
         
         # Calculate value
-        value = sum(p.projected_points for p in starters)
+        # Calculate value - K and DEF get 40% starting value, others get full value
+        value = 0.0
+        for p in starters:
+            if p.position in ['K', 'DEF']:
+                value += p.projected_points * 0.40  # 40% starting value for K and DEF
+            else:
+                value += p.projected_points  # Full value for other positions
         
         # For bench, use new bench value logic
         bench_counts = {'QB': 0, 'RB': 0, 'WR': 0, 'TE': 0}

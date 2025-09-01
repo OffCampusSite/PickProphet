@@ -211,7 +211,7 @@
                                 <select class="form-select" id="scoringFormat">
                                     <option value="ppr">PPR</option>
                                     <option value="half-ppr">Half-PPR</option>
-                                    <option value="standard">Standard</option>
+                                    <option value="non-ppr">Standard</option>
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -243,6 +243,9 @@
                             </div>
                             <button type="submit" class="btn btn-primary w-100" id="initButton">
                                 <i class="fas fa-play me-2"></i>Initialize Draft
+                            </button>
+                            <button type="button" class="btn btn-warning w-100 mt-2" id="changePositionButton" onclick="changeUserPosition()">
+                                <i class="fas fa-edit me-2"></i>Change Draft Position
                             </button>
                         </form>
                     </div>
@@ -487,7 +490,7 @@
                 const numTeams = parseInt(document.getElementById('numTeams').value);
                 const userPosition = parseInt(document.getElementById('userPosition').value);
                 
-                const response = await fetch('/api/init_draft', {
+                const response = await fetch('/api/init', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -495,7 +498,7 @@
                     body: JSON.stringify({
                         scoring_format: scoringFormat,
                         num_teams: numTeams,
-                        user_draft_position: userPosition
+                        user_position: userPosition
                     })
                 });
 
@@ -551,6 +554,14 @@
                         <small class="text-muted">All ${status.total_roster_spots || 0} roster spots filled</small>
                     </div>
                 `;
+            } else if (pickInfo.status === 'Draft Not Started') {
+                pickInfoDiv.innerHTML = `
+                    <div class="text-center">
+                        <i class="fas fa-clock text-muted fa-2x mb-2"></i>
+                        <h6 class="text-muted">Draft Not Started</h6>
+                        <small class="text-muted">Your Position: ${status.user_draft_position || 'Not Set'}</small>
+                    </div>
+                `;
             } else {
                 const statusClass = pickInfo.is_user_turn ? 'success' : 'warning';
                 pickInfoDiv.innerHTML = `
@@ -560,6 +571,7 @@
                         <span class="badge bg-${statusClass} status-badge">
                             ${pickInfo.status}
                         </span>
+                        <br><small class="text-muted mt-1">Your Position: ${status.user_draft_position || 'Not Set'}</small>
                     </div>
                 `;
             }
@@ -685,7 +697,10 @@
 
                 const data = await response.json();
                 if (data.success) {
-                    showAlert(`Successfully drafted ${playerName}!`, 'success');
+                    // Remove player from available players list immediately
+                    removePlayerFromLists(playerName);
+                    
+                    // Don't show duplicate success message since removePlayerFromLists shows one
                     await loadAllData();
                     
                     // Reload roster after user pick (even after draft is initialized)
@@ -696,6 +711,49 @@
             } catch (error) {
                 showAlert('Error drafting player: ' + error.message, 'danger');
             }
+        }
+
+        function removePlayerFromLists(playerName) {
+            // Remove from available players
+            const availableContainer = document.getElementById('availablePlayers');
+            const playerCards = availableContainer.querySelectorAll('.player-card');
+            playerCards.forEach(card => {
+                const nameElement = card.querySelector('strong');
+                if (nameElement && nameElement.textContent === playerName) {
+                    card.style.transition = 'opacity 0.3s ease';
+                    card.style.opacity = '0';
+                    setTimeout(() => card.remove(), 300);
+                }
+            });
+            
+            // Remove from search results
+            const searchContainer = document.getElementById('searchResults');
+            if (searchContainer) {
+                const searchCards = searchContainer.querySelectorAll('.player-card');
+                searchCards.forEach(card => {
+                    const nameElement = card.querySelector('strong');
+                    if (nameElement && nameElement.textContent === playerName) {
+                        card.style.transition = 'opacity 0.3s ease';
+                        card.style.opacity = '0';
+                        setTimeout(() => card.remove(), 300);
+                    }
+                });
+            }
+            
+            // Remove from recommendations
+            const recContainer = document.getElementById('recommendations');
+            const recCards = recContainer.querySelectorAll('.recommendation-card');
+            recCards.forEach(card => {
+                const nameElement = card.querySelector('strong');
+                if (nameElement && nameElement.textContent.includes(playerName)) {
+                    card.style.transition = 'opacity 0.3s ease';
+                    card.style.opacity = '0';
+                    setTimeout(() => card.remove(), 300);
+                }
+            });
+            
+            // Show a visual feedback that the player was drafted
+            showAlert(`${playerName} has been drafted and removed from available players!`, 'info');
         }
 
         async function getRecommendations() {
@@ -973,6 +1031,37 @@
         function skipRecommendations() {
             document.getElementById('recommendationsCard').style.display = 'none';
             showAlert('Recommendations skipped. You can make a manual pick.', 'info');
+        }
+
+        async function changeUserPosition() {
+            const userPosition = document.getElementById('userPosition').value;
+            
+            if (!userPosition) {
+                showAlert('Please select a draft position first', 'warning');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/set_user_position', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_position: parseInt(userPosition)
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showAlert(`Draft position changed to ${userPosition}`, 'success');
+                    await loadAllData();
+                } else {
+                    showAlert('Failed to change draft position: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error changing draft position: ' + error.message, 'danger');
+            }
         }
 
         function showAlert(message, type) {

@@ -346,11 +346,11 @@ def create_custom_projections_table(supabase):
         }
         
         # Try to insert (this will create the table if it doesn't exist)
-        result = supabase.table('custom_projections').insert(test_data).execute()
+        result = supabase.table('user_custom_projections').insert(test_data).execute()
         print("✅ custom_projections table created")
         
         # Clean up test data
-        supabase.table('custom_projections').delete().eq('user_id', 'test_user').execute()
+        supabase.table('user_custom_projections').delete().eq('user_id', 'test_user').execute()
         print("✅ Test data cleaned up")
         
     except Exception as e:

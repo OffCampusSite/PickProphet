@@ -1,4 +1,4 @@
-# PickProphet - Fantasy Football Draft Assistant
+# James Clessuras FF - Fantasy Football Draft Assistant
 
 A comprehensive fantasy football draft assistant with custom projections, simulations, and real-time recommendations.
 

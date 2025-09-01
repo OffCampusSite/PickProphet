@@ -29,7 +29,7 @@ class FantasyDraftAssistant:
         
         # League settings (configurable)
         self.num_teams = 12
-        self.user_draft_position = 1
+        self.user_draft_position = 0  # Will be set when draft is initialized
         self.current_round = 1
         self.current_pick = 1
         self.draft_order = []
@@ -51,7 +51,7 @@ class FantasyDraftAssistant:
         
         # Draft state
         self.drafted_players = {f'Team {i+1}': [] for i in range(self.num_teams)}
-        self.available_players = set(self.players)
+        self.available_players = set()  # Will be set after players are loaded
         self.draft_history = []
         
         # Cached recommendations
@@ -69,6 +69,13 @@ class FantasyDraftAssistant:
         self.scoring_format = 'non-ppr'  # Default scoring format
         
         self._generate_draft_order()
+        
+        # Debug output
+        print(f"FantasyDraftAssistant initialized:")
+        print(f"  - CSV file path: {self.csv_file_path}")
+        print(f"  - Players loaded: {len(self.players)}")
+        print(f"  - Available players: {len(self.available_players)}")
+        print(f"  - Draft initialized: {self.draft_initialized}")
     
     def get_player_by_name(self, player_name: str) -> Optional[Player]:
         """Get a player by name from the available players."""
@@ -96,6 +103,17 @@ class FantasyDraftAssistant:
     def set_scoring_format(self, scoring_format: str):
         """Set the scoring format for the draft assistant."""
         self.scoring_format = scoring_format
+    
+    def set_roster_constraints(self, roster_constraints: dict):
+        """Set custom roster constraints for the league."""
+        # Update the roster constraints
+        for position, count in roster_constraints.items():
+            if position in self.roster_constraints:
+                self.roster_constraints[position] = count
+        
+        # Regenerate draft order since roster constraints changed
+        self._generate_draft_order()
+        print(f"Updated roster constraints: {self.roster_constraints}")
     
     def get_player_projected_points(self, player: Player, scoring_format: Optional[str] = None) -> float:
         """Get projected points for a player, using custom projections if available."""
@@ -271,28 +289,33 @@ class FantasyDraftAssistant:
             return 0.0
     
     def load_players(self):
-        """Load player data from FantasyPros CSV files and create a comprehensive dataframe."""
+        """Load player data from OALFFL rankings CSV file."""
         try:
-            # Create a comprehensive dataframe from all sources
             all_players = []
             
-            # Load WeeklyFantasyFootballCheatingSheet.csv first as the primary source
+            # Load the OALFFL rankings CSV file
             try:
-                main_df = pd.read_csv('WeeklyFantasyFootballCheatingSheet.csv')
-                print(f"Loaded {len(main_df)} players from WeeklyFantasyFootballCheatingSheet.csv")
+                # Skip the first 4 rows and use the 5th row as header
+                main_df = pd.read_csv(self.csv_file_path, skiprows=4, header=0)
+                # The first row contains the actual column names, so we need to use it as header
+                main_df.columns = main_df.iloc[0]
+                main_df = main_df.drop(main_df.index[0])
+                main_df = main_df.reset_index(drop=True)
+                print(f"Loaded {len(main_df)} players from {self.csv_file_path}")
                 
                 for _, row in main_df.iterrows():
-                    if pd.notna(row['Name']) and str(row['Name']).strip() != '':
-                        # Get basic info from main CSV
+                    # Skip header rows and empty rows
+                    if pd.notna(row['Name']) and str(row['Name']).strip() != '' and str(row['Name']).strip() != 'Name':
+                        # Get basic info from OALFFL CSV
                         name = str(row['Name']).strip()
-                        position = str(row['Position']).strip()
-                        # Convert DEF to DST for consistency
-                        if position == 'DEF':
+                        position = str(row['Pos']).strip()
+                        # Convert ST to DST for consistency
+                        if position == 'ST':
                             position = 'DST'
                         team = str(row['Team']).strip()
                         
-                        # Handle ADP
-                        adp_value = row['ADP']
+                        # Handle ADP (Rank = ADP)
+                        adp_value = row['Rank']
                         if pd.notna(adp_value) and adp_value != '-' and adp_value != '':
                             try:
                                 adp = float(adp_value)
@@ -302,7 +325,7 @@ class FantasyDraftAssistant:
                             adp = 999.0
                 
                         # Handle bye week
-                        bye_value = row['Bye_Week']
+                        bye_value = row['Bye']
                         if pd.notna(bye_value) and bye_value != '-' and bye_value != '':
                             try:
                                 bye_week = int(bye_value)
@@ -312,7 +335,7 @@ class FantasyDraftAssistant:
                             bye_week = 0
                 
                         # Handle projected points
-                        proj_value = row['Proj_Pts']
+                        proj_value = row['Points']
                         if pd.notna(proj_value) and proj_value != '-' and proj_value != '':
                             try:
                                 projected_points = float(proj_value)
@@ -329,165 +352,16 @@ class FantasyDraftAssistant:
                             adp=adp,
                             bye_week=bye_week,
                             projected_points=projected_points,
-                            weekly_projections=tuple([projected_points/17] * 18)
+                            weekly_projections=tuple([0] * 18)  # Will be calculated dynamically
                         )
                         all_players.append(player)
                         
             except Exception as e:
-                print(f"Error loading main CSV: {e}")
-            
-            # Now enhance with FantasyPros data for better scoring calculations
-            try:
-                # Load QB data for enhanced scoring
-                qb_df = pd.read_csv('FantasyPros_Fantasy_Football_Projections_QB.csv')
-                for _, row in qb_df.iterrows():
-                    if pd.notna(row['Player']) and str(row['Player']).strip() != '':
-                        player_name = str(row['Player']).strip()
-                        
-                        # Store raw stats for customization
-                        raw_stats = {
-                            'passing_yards': self._safe_float(row['YDS']),
-                            'passing_tds': self._safe_float(row['TDS']),
-                            'interceptions': self._safe_float(row['INTS']),
-                            'rushing_yards': self._safe_float(row['YDS.1']),
-                            'rushing_tds': self._safe_float(row['TDS.1']),
-                            'fumbles': self._safe_float(row['FL'])
-                        }
-                        self.raw_stats[player_name] = raw_stats
-                        
-                        # Find matching player in our list and update team if needed
-                        for player in all_players:
-                            if player.name == player_name and player.position == 'QB':
-                                # Note: We can't modify frozen Player fields, so we'll use raw_stats for team info
-                                break
-            except Exception as e:
-                print(f"Error loading QB data: {e}")
-            
-            # Load RB data for enhanced scoring
-            try:
-                rb_df = pd.read_csv('FantasyPros_Fantasy_Football_Projections_RB.csv')
-                for _, row in rb_df.iterrows():
-                    if pd.notna(row['Player']) and str(row['Player']).strip() != '':
-                        player_name = str(row['Player']).strip()
-                        
-                        # Store raw stats for customization
-                        raw_stats = {
-                            'rushing_yards': self._safe_float(row['YDS']),
-                            'rushing_tds': self._safe_float(row['TDS']),
-                            'receiving_yards': self._safe_float(row['YDS.1']),
-                            'receiving_tds': self._safe_float(row['TDS.1']),
-                            'receptions': self._safe_float(row['REC']),
-                            'fumbles': self._safe_float(row['FL'])
-                        }
-                        self.raw_stats[player_name] = raw_stats
-                        
-                        # Find matching player in our list
-                        for player in all_players:
-                            if player.name == player_name and player.position == 'RB':
-                                break
-            except Exception as e:
-                print(f"Error loading RB data: {e}")
-            
-            # Load WR data for enhanced scoring
-            try:
-                wr_df = pd.read_csv('FantasyPros_Fantasy_Football_Projections_WR.csv')
-                for _, row in wr_df.iterrows():
-                    if pd.notna(row['Player']) and str(row['Player']).strip() != '':
-                        player_name = str(row['Player']).strip()
-                        
-                        # Store raw stats for customization
-                        raw_stats = {
-                            'receiving_yards': self._safe_float(row['YDS']),
-                            'receiving_tds': self._safe_float(row['TDS']),
-                            'receptions': self._safe_float(row['REC']),
-                            'rushing_yards': self._safe_float(row['YDS.1']),
-                            'rushing_tds': self._safe_float(row['TDS.1']),
-                            'fumbles': self._safe_float(row['FL'])
-                        }
-                        self.raw_stats[player_name] = raw_stats
-                        
-                        # Find matching player in our list
-                        for player in all_players:
-                            if player.name == player_name and player.position == 'WR':
-                                break
-            except Exception as e:
-                print(f"Error loading WR data: {e}")
-            
-            # Load TE data for enhanced scoring
-            try:
-                te_df = pd.read_csv('FantasyPros_Fantasy_Football_Projections_TE.csv')
-                for _, row in te_df.iterrows():
-                    if pd.notna(row['Player']) and str(row['Player']).strip() != '':
-                        player_name = str(row['Player']).strip()
-                        
-                        # Store raw stats for customization
-                        raw_stats = {
-                            'receiving_yards': self._safe_float(row['YDS']),
-                            'receiving_tds': self._safe_float(row['TDS']),
-                            'receptions': self._safe_float(row['REC']),
-                            'fumbles': self._safe_float(row['FL'])
-                        }
-                        self.raw_stats[player_name] = raw_stats
-                        
-                        # Find matching player in our list
-                        for player in all_players:
-                            if player.name == player_name and player.position == 'TE':
-                                break
-            except Exception as e:
-                print(f"Error loading TE data: {e}")
-            
-            # Load K data
-            try:
-                k_df = pd.read_csv('FantasyPros_Fantasy_Football_Projections_K.csv')
-                for _, row in k_df.iterrows():
-                    if pd.notna(row['Player']) and str(row['Player']).strip() != '':
-                        player_name = str(row['Player']).strip()
-                        
-                        # Store raw stats for customization
-                        raw_stats = {
-                            'field_goals': self._safe_float(row.get('FG', 0)),
-                            'extra_points': self._safe_float(row.get('XPT', 0)),
-                            'projected_points': self._safe_float(row['FPTS'])
-                        }
-                        self.raw_stats[player_name] = raw_stats
-                        
-                        # Find matching player in our list and update projected points
-                        for player in all_players:
-                            if player.name == player_name and player.position == 'K':
-                                # We can't modify frozen Player fields, so we'll use raw_stats for projected points
-                                break
-            except Exception as e:
-                print(f"Error loading K data: {e}")
-            
-            # Load DEF data
-            try:
-                def_df = pd.read_csv('FantasyPros_Fantasy_Football_Projections_DST.csv')
-                for _, row in def_df.iterrows():
-                    if pd.notna(row['Player']) and str(row['Player']).strip() != '':
-                        player_name = str(row['Player']).strip()
-                        
-                        # Store raw stats for customization
-                        raw_stats = {
-                            'sacks': self._safe_float(row.get('SACK', 0)),
-                            'interceptions': self._safe_float(row.get('INT', 0)),
-                            'fumble_recoveries': self._safe_float(row.get('FR', 0)),
-                            'touchdowns': self._safe_float(row.get('TD', 0)),
-                            'safeties': self._safe_float(row.get('SAFETY', 0)),
-                            'points_allowed': self._safe_float(row.get('PA', 0)),
-                            'projected_points': self._safe_float(row['FPTS'])
-                        }
-                        self.raw_stats[player_name] = raw_stats
-                        
-                        # Find matching player in our list
-                        for player in all_players:
-                            if player.name == player_name and player.position in ['DEF', 'DST']:
-                                break
-            except Exception as e:
-                print(f"Error loading DEF data: {e}")
+                print(f"Error loading OALFFL rankings CSV: {e}")
             
             self.players = all_players
-            print(f"Loaded {len(self.players)} players from comprehensive data sources")
-            print(f"Stored raw stats for {len(self.raw_stats)} players")
+            self.available_players = set(self.players)
+            print(f"Loaded {len(self.players)} players from OALFFL rankings")
             
         except Exception as e:
             print(f"Error loading CSV files: {e}")
@@ -548,24 +422,65 @@ class FantasyDraftAssistant:
             Player("Buffalo Bills", "DEF", "BUF", 150.0, 7, 170.0, tuple([10.0] * 18)),
         ]
         self.players = sample_players
+        self.available_players = set(self.players)
         print("Created sample player data")
     
     def _generate_draft_order(self):
-        """Generate snake draft order."""
+        """Generate snake draft order based on roster constraints."""
         self.draft_order = []
-        for round_num in range(1, 21):  # Assuming 20 rounds
-            if round_num % 2 == 1:  # Odd rounds: 1, 2, 3, ..., 12
+        
+        # Calculate total picks needed per team based on roster constraints
+        total_picks_per_team = sum(self.roster_constraints.values())
+        
+        for round_num in range(1, total_picks_per_team + 1):
+            if round_num % 2 == 1:  # Odd rounds: 1, 2, 3, ..., num_teams
                 round_order = list(range(1, self.num_teams + 1))
-            else:  # Even rounds: 12, 11, 10, ..., 1
+            else:  # Even rounds: num_teams, num_teams-1, ..., 1
                 round_order = list(range(self.num_teams, 0, -1))
             
             for team_id in round_order:
                 self.draft_order.append((round_num, team_id))
+        
+        # Update total picks
+        self.total_picks = len(self.draft_order)
+        print(f"Generated draft order: {total_picks_per_team} rounds, {self.total_picks} total picks")
+    
+    def regenerate_draft_order(self):
+        """Regenerate draft order when user position or number of teams changes."""
+        self._generate_draft_order()
+        print(f"Regenerated draft order for {self.num_teams} teams with user at position {self.user_draft_position}")
+        print(f"Draft order: {self.draft_order[:10]}...")  # Show first 10 picks
+    
+    def set_user_draft_position(self, position: int):
+        """Set user draft position and regenerate draft order."""
+        if position < 1 or position > self.num_teams:
+            raise ValueError(f"Invalid draft position: {position}. Must be between 1 and {self.num_teams}")
+        
+        self.user_draft_position = position
+        self.regenerate_draft_order()
+        print(f"User draft position set to {position}")
+    
+    def set_num_teams(self, num_teams: int):
+        """Set number of teams and regenerate draft order."""
+        if num_teams < 2 or num_teams > 16:
+            raise ValueError(f"Invalid number of teams: {num_teams}. Must be between 2 and 16")
+        
+        self.num_teams = num_teams
+        self.teams = [f'Team {i+1}' for i in range(self.num_teams)]
+        self.drafted_players = {f'Team {i+1}': [] for i in range(self.num_teams)}
+        
+        # Adjust user draft position if it's now invalid
+        if self.user_draft_position > num_teams:
+            self.user_draft_position = num_teams
+            print(f"Adjusted user draft position from {self.user_draft_position} to {num_teams} (max for {num_teams} teams)")
+        
+        self.regenerate_draft_order()
+        print(f"Number of teams set to {num_teams}")
     
     def get_current_pick_info(self) -> Dict:
         """Get information about the current pick."""
-        # If draft is not initialized, return a status indicating it's not started
-        if not self.draft_initialized:
+        # If draft is not initialized or user position not set, return a status indicating it's not started
+        if not self.draft_initialized or self.user_draft_position == 0:
             return {
                 "status": "Draft Not Started",
                 "is_user_turn": False,
@@ -732,7 +647,7 @@ class FantasyDraftAssistant:
         }
         
         # Sort players by projected points to prioritize starters
-        sorted_roster = sorted(current_roster, key=lambda p: p.projected_points, reverse=True)
+        sorted_roster = sorted(current_roster, key=lambda p: self.get_player_projected_points(p, self.scoring_format), reverse=True)
         
         for player in sorted_roster:
             pos = player.position
@@ -805,7 +720,7 @@ class FantasyDraftAssistant:
         available = [p for p in roster if p.bye_week != week]
         
         # Sort by weekly projection
-        available.sort(key=lambda p: p.weekly_projections[week-1] if week <= len(p.weekly_projections) else 0, reverse=True)
+        available.sort(key=lambda p: self.get_player_projected_points(p, self.scoring_format) / 17, reverse=True)
         
         lineup = {}
         
@@ -847,8 +762,9 @@ class FantasyDraftAssistant:
         total_score = 0.0
         
         for position, player in lineup.items():
-            if week <= len(player.weekly_projections):
-                total_score += player.weekly_projections[week-1]
+            # Calculate weekly projection dynamically
+            weekly_score = self.get_player_projected_points(player, self.scoring_format) / 17
+            total_score += weekly_score
         
         return total_score
     
@@ -1117,7 +1033,7 @@ class FantasyDraftAssistant:
         finally:
             # Restore original state
             self.drafted_players = original_drafted_players
-            self.available_players = list(original_available_players)
+            self.available_players = set(original_available_players)
             self.current_pick = original_pick
     
     def _get_roster_needs_for_simulation(self, roster: List[Player]) -> Dict[str, int]:
@@ -1145,7 +1061,7 @@ class FantasyDraftAssistant:
         }
         
         # Sort players by projected points to prioritize starters
-        sorted_roster = sorted(roster, key=lambda p: p.projected_points, reverse=True)
+        sorted_roster = sorted(roster, key=lambda p: self.get_player_projected_points(p, self.scoring_format), reverse=True)
         
         for player in sorted_roster:
             pos = player.position
@@ -1222,7 +1138,7 @@ class FantasyDraftAssistant:
         }
         
         # Sort players by projected points to prioritize starters
-        sorted_roster = sorted(roster, key=lambda p: self.get_player_projected_points(p), reverse=True)
+        sorted_roster = sorted(roster, key=lambda p: self.get_player_projected_points(p, self.scoring_format), reverse=True)
         
         for player in sorted_roster:
             pos = player.position
@@ -1278,7 +1194,7 @@ class FantasyDraftAssistant:
                 effective_percent = max(0, base_percent - (slot_position - 1) * drop_off)
                 
                 # Calculate bench value for this player using correct projected points
-                player_projected = self.get_player_projected_points(player)
+                player_projected = self.get_player_projected_points(player, self.scoring_format)
                 player_bench_value = (player_projected * effective_percent) / 100
                 
                 bench_value += player_bench_value
@@ -1299,21 +1215,21 @@ class FantasyDraftAssistant:
         
         if player.position in ['RB', 'WR']:
             if bench_depth == 0:
-                return player.projected_points * 0.30
+                return self.get_player_projected_points(player, self.scoring_format) * 0.30
             elif bench_depth == 1:
-                return player.projected_points * 0.22
+                return self.get_player_projected_points(player, self.scoring_format) * 0.22
             elif bench_depth == 2:
-                return player.projected_points * 0.14
+                return self.get_player_projected_points(player, self.scoring_format) * 0.14
             else:
-                return player.projected_points * 0.05
+                return self.get_player_projected_points(player, self.scoring_format) * 0.05
         elif player.position == 'QB':
             if bench_depth == 0:
-                return player.projected_points * 0.13
+                return self.get_player_projected_points(player, self.scoring_format) * 0.13
             else:
-                return player.projected_points * 0.03
+                return self.get_player_projected_points(player, self.scoring_format) * 0.03
         elif player.position == 'TE':
             if bench_depth == 0:
-                return player.projected_points * 0.10
+                return self.get_player_projected_points(player, self.scoring_format) * 0.10
             else:
                 return 0.0
         else:
@@ -1330,7 +1246,7 @@ class FantasyDraftAssistant:
         starters = []
         bench = []
         filled = {k: 0 for k in self.roster_constraints}
-        sorted_players = sorted(roster, key=lambda p: p.projected_points, reverse=True)
+        sorted_players = sorted(roster, key=lambda p: self.get_player_projected_points(p, self.scoring_format), reverse=True)
         
         # Fill required positions
         for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
@@ -1353,7 +1269,7 @@ class FantasyDraftAssistant:
                 bench.append(p)
         
         # Calculate value
-        value = sum(p.projected_points for p in starters)
+        value = sum(self.get_player_projected_points(p, self.scoring_format) for p in starters)
         
         # For bench, use new bench value logic
         bench_counts = {'QB': 0, 'RB': 0, 'WR': 0, 'TE': 0}
@@ -1374,7 +1290,7 @@ class FantasyDraftAssistant:
         starters = []
         bench = []
         filled = {k: 0 for k in self.roster_constraints}
-        sorted_players = sorted(roster, key=lambda p: p.projected_points, reverse=True)
+        sorted_players = sorted(roster, key=lambda p: self.get_player_projected_points(p, self.scoring_format), reverse=True)
         
         # Fill required positions
         for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
@@ -1397,7 +1313,7 @@ class FantasyDraftAssistant:
                 bench.append(p)
         
         # Calculate value
-        value = sum(p.projected_points for p in starters)
+        value = sum(self.get_player_projected_points(p, self.scoring_format) for p in starters)
         
         # For bench, use new bench value logic
         bench_counts = {'QB': 0, 'RB': 0, 'WR': 0, 'TE': 0}
@@ -1488,7 +1404,7 @@ class FantasyDraftAssistant:
                     assigned_players.add(player.name)
         
         # Fill FLEX position with best remaining WR/RB/TE
-                    flex_slots = self.roster_constraints.get('FLEX', 0)
+        flex_slots = self.roster_constraints.get('FLEX', 0)
         for player, score in weekly_scores:
             if player.name in assigned_players:
                 continue
@@ -1503,8 +1419,8 @@ class FantasyDraftAssistant:
     
     def get_draft_status(self) -> Dict:
         """Get overall draft status."""
-        # If draft is not initialized, return a status indicating it's not started
-        if not self.draft_initialized:
+        # If draft is not initialized or user position not set, return a status indicating it's not started
+        if not self.draft_initialized or self.user_draft_position == 0:
             return {
                 "total_picks": 0,
                 "completed_picks": 0,
@@ -1517,7 +1433,7 @@ class FantasyDraftAssistant:
                     "team_id": 0,
                     "team_name": "None"
                 },
-                "user_team": self.teams[self.user_draft_position - 1] if hasattr(self, 'user_draft_position') else "None",
+                "user_team": "None",
                 "user_roster": []
             }
         
@@ -1578,14 +1494,15 @@ class FantasyDraftAssistant:
     
     def reset_draft(self):
         """Reset the draft to initial state."""
+        # Ensure user position is set before resetting
+        if self.user_draft_position == 0:
+            raise ValueError("User draft position must be set before resetting draft")
+        
         self.current_round = 1
         self.current_pick = 1
         
-        # Recalculate total picks based on current num_teams
-        self.total_picks = 20 * self.num_teams
-        
-        # Regenerate draft order
-        self._generate_draft_order()
+        # Regenerate draft order to ensure it's current
+        self.regenerate_draft_order()
         
         # Reset draft state
         self.drafted_players = {f'Team {i+1}': [] for i in range(self.num_teams)}
@@ -1599,6 +1516,7 @@ class FantasyDraftAssistant:
         self.draft_initialized = True
         
         print(f"Draft reset: {self.num_teams} teams, {self.total_picks} total picks")
+        print(f"User draft position: {self.user_draft_position}")
     
     def _get_current_team(self) -> str:
         """Get the current team name based on the current pick."""

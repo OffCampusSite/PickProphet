@@ -35,8 +35,8 @@ class SupabaseManager:
             return
         
         try:
-            # Create custom_projections table
-            self.supabase.table('custom_projections').select('*').limit(1).execute()
+            # Create user_custom_projections table
+            self.supabase.table('user_custom_projections').select('*').limit(1).execute()
             print("Custom projections table exists")
         except Exception as e:
             print(f"Table setup error (this is normal for new databases): {e}")
@@ -62,14 +62,14 @@ class SupabaseManager:
             }
             
             # Check if projection already exists for this user and player
-            existing = self.supabase.table('custom_projections').select('*').eq('user_id', user_id).eq('player_name', player_name).execute()
+            existing = self.supabase.table('user_custom_projections').select('*').eq('user_id', user_id).eq('player_name', player_name).execute()
             
             if existing.data:
                 # Update existing record
-                self.supabase.table('custom_projections').update(data).eq('user_id', user_id).eq('player_name', player_name).execute()
+                self.supabase.table('user_custom_projections').update(data).eq('user_id', user_id).eq('player_name', player_name).execute()
             else:
                 # Insert new record
-                self.supabase.table('custom_projections').insert(data).execute()
+                self.supabase.table('user_custom_projections').insert(data).execute()
             
             print(f"Saved custom projection for {player_name} to Supabase")
             return True
@@ -83,7 +83,7 @@ class SupabaseManager:
             return {}
         
         try:
-            result = self.supabase.table('custom_projections').select('*').eq('user_id', user_id).execute()
+            result = self.supabase.table('user_custom_projections').select('*').eq('user_id', user_id).execute()
             projections = {}
             
             for record in result.data:
@@ -110,7 +110,7 @@ class SupabaseManager:
             return False
         
         try:
-            self.supabase.table('custom_projections').delete().eq('user_id', user_id).eq('player_name', player_name).execute()
+            self.supabase.table('user_custom_projections').delete().eq('user_id', user_id).eq('player_name', player_name).execute()
             print(f"Deleted custom projection for {player_name} from Supabase")
             return True
         except Exception as e:
@@ -123,7 +123,7 @@ class SupabaseManager:
             return False
         
         try:
-            self.supabase.table('custom_projections').delete().eq('user_id', user_id).execute()
+            self.supabase.table('user_custom_projections').delete().eq('user_id', user_id).execute()
             print(f"Deleted all custom projections for user {user_id} from Supabase")
             return True
         except Exception as e:
