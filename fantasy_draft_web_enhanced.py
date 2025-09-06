@@ -63,7 +63,7 @@ def load_players_globally():
         import pandas as pd
         
         # Load the OALFFL rankings CSV file
-        csv_path = "09012025Rankings_updated_oalffl (1).csv"
+        csv_path = "/Users/gclessuras/Documents/09042025LEAGUE_Rankings 2.csv"
         
         if not os.path.exists(csv_path):
             print(f"CSV file not found: {csv_path}")
@@ -163,7 +163,7 @@ def get_draft_assistant():
     
     if draft_assistant is None:
         # Use the OALFFL rankings CSV file
-        csv_path = "09012025Rankings_updated_oalffl (1).csv"
+        csv_path = "/Users/gclessuras/Documents/09042025LEAGUE_Rankings 2.csv"
         
         if not os.path.exists(csv_path):
             print(f"OALFFL rankings CSV file not found: {csv_path}. Creating sample data.")
@@ -188,7 +188,7 @@ def cache_all_projections():
         print("Starting to cache projections from OALFFL data...")
         
         # Use OALFFL rankings data instead of FantasyPros files
-        csv_path = "09012025Rankings_updated_oalffl (1).csv"
+        csv_path = "/Users/gclessuras/Documents/09042025LEAGUE_Rankings 2.csv"
         
         if not os.path.exists(csv_path):
             print(f"OALFFL file not found: {csv_path}")
