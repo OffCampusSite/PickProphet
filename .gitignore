@@ -1,3 +1,6 @@
+# Environment variables
+.env
+
 # Python
 __pycache__/
 *.py[cod]
@@ -19,28 +22,12 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Virtual Environment
+# Virtual environments
 venv/
 env/
 ENV/
-
-# Environment variables
-.env
-.env.local
-.env.production
-
-# Logs
-*.log
-app*.log
-
-# Cache files
-player_projections_cache.json
-completed_drafts.json
-
-# Database files
-*.db
-*.sqlite
 
 # IDE
 .vscode/
@@ -52,13 +39,19 @@ completed_drafts.json
 .DS_Store
 Thumbs.db
 
+# Logs
+*.log
+
+# Local data files (if any)
+*.json
+!package.json
+!package-lock.json
+!railway.json
+
+# Test files
+test_*.py
+*_test.py
+
 # Temporary files
 *.tmp
-*.temp
-
-# Railway
-.railway/
-
-# Supabase
-supabase/.branches
-supabase/.temp
+*.temp 
