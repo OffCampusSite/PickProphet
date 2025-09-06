@@ -1345,7 +1345,7 @@ class FantasyDraftAssistant:
         
         if player.position == 'QB':
             if bench_depth == 0:
-                return player.projected_points * 0.20  # 20% for 1st bench QB
+                return player.projected_points * 0.35  # 35% for 1st bench QB
             else:
                 return 0.0  # All following QBs worth 0%
         elif player.position == 'RB':

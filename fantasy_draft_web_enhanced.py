@@ -1770,7 +1770,7 @@ def calculate_bench_value_for_player_web_projections(player, team_roster, projec
     
     if player.position == 'QB':
         if bench_depth == 0:
-            return player_projected * 0.20  # 20% for 1st bench QB
+            return player_projected * 0.35  # 35% for 1st bench QB
         else:
             return 0.0  # All following QBs worth 0%
     elif player.position == 'RB':
