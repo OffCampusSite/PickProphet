@@ -1,98 +1,153 @@
-# James Clessuras FF - Fantasy Football Draft Assistant
+# PickProphet - Fantasy Draft Assistant
 
-A comprehensive fantasy football draft assistant with custom projections, simulations, and real-time recommendations.
+A comprehensive fantasy football draft assistant with real-time recommendations, player projections, and draft simulation capabilities.
 
-## Features
+## 🚀 Features
 
-- **Custom Projections**: Save and load custom player projections
-- **Draft Simulations**: Run 40 simulations for accurate recommendations
-- **Real-time Recommendations**: Get live draft advice based on your roster
-- **User Authentication**: Secure login with Supabase
-- **Multiple Scoring Formats**: PPR, Half-PPR, and Non-PPR support
-- **Bench Value Optimization**: Smart bench value calculations
+- **Real-time Draft Assistant**: Get AI-powered recommendations during your draft
+- **Multiple Scoring Formats**: Support for PPR, Half-PPR, and Non-PPR leagues
+- **Player Projections**: 392+ players with detailed projections and rankings
+- **Draft Simulation**: Practice drafts with AI opponents
+- **User Management**: Secure login and draft history tracking
+- **Export Functionality**: Export draft results and team analysis
 
-## Recent Updates
+## 📊 Player Data
 
-- **Bench Values**: TE (5%), RB/WR first (27%), RB/WR second (18%)
-- **Simulation Count**: Increased to 40 simulations for better accuracy
-- **Supabase Integration**: All data saved to and loaded from Supabase
+- **Total Players**: 392 players across all positions
+- **Data Source**: OALFFL (Ohio Outcasts Fantasy Football League) rankings
+- **Positions**: QB, RB, WR, TE, K, DST
+- **Updated**: September 2025 projections
 
-## Railway Deployment
+## 🛠️ Tech Stack
 
-### Prerequisites
+- **Backend**: Python Flask
+- **Frontend**: HTML, CSS, JavaScript, Bootstrap
+- **Database**: Supabase (PostgreSQL)
+- **Deployment**: Railway
+- **Data Processing**: Pandas, NumPy
 
-1. **Railway Account**: Sign up at [railway.app](https://railway.app)
-2. **Supabase Project**: Ensure your Supabase project is set up with the required tables
-3. **Environment Variables**: Configure the following in Railway:
+## 🚀 Quick Start
+
+### Local Development
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/egclessuras-svg/PickProphet.git
+   cd PickProphet
+   ```
+
+2. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Run the application**
+   ```bash
+   python3 run_port_5201.py
+   ```
+
+4. **Access the app**
+   - Open http://localhost:5201 in your browser
+
+### Railway Deployment
+
+1. **Connect to Railway**
+   - Go to [Railway.app](https://railway.app)
+   - Connect your GitHub account
+   - Import this repository
+
+2. **Set Environment Variables** (Optional)
+   ```
+   SUPABASE_URL=your_supabase_url
+   SUPABASE_KEY=your_supabase_key
+   FLASK_SECRET_KEY=your_secret_key
+   ```
+
+3. **Deploy**
+   - Railway will automatically deploy from the main branch
+   - The app will be available at your Railway domain
+
+## 📁 Project Structure
+
+```
+PickProphet/
+├── fantasy_draft_web_enhanced.py    # Main Flask application
+├── fantasy_draft_assistant_v2_clean.py  # Core draft logic
+├── supabase_manager.py              # Database management
+├── templates/                       # HTML templates
+│   ├── index.html
+│   ├── login.html
+│   ├── register.html
+│   ├── pre_draft.html
+│   ├── draft.html
+│   └── user.html
+├── rankings.csv                     # Player rankings data
+├── requirements.txt                 # Python dependencies
+├── Procfile                        # Railway deployment config
+├── railway.json                    # Railway configuration
+└── README.md                       # This file
+```
+
+## 🔧 Configuration
 
 ### Environment Variables
 
-Set these in your Railway project settings:
+- `PORT`: Server port (Railway sets this automatically)
+- `SUPABASE_URL`: Supabase database URL (optional)
+- `SUPABASE_KEY`: Supabase API key (optional)
+- `FLASK_SECRET_KEY`: Flask session secret key (optional)
 
-```
-SUPABASE_URL=https://arlovpdltkdlrkkmtigv.supabase.co
-SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFybG92cGRsdGtkbHJra210aWd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ1MjgyMDEsImV4cCI6MjA3MDEwNDIwMX0.PbTsyL_TmzNgYPxOPfAQPYI6MykbTNnW0sT5epwxTtg
-FLASK_SECRET_KEY=your-secret-key-here
-```
+### CSV Data Format
 
-### Deployment Steps
+The `rankings.csv` file should contain:
+- Rank, Position, Team, Name, Bye Week, Projected Points
+- Headers in row 6
+- Data starting from row 7
 
-1. **Connect Repository**: 
-   - Go to Railway dashboard
-   - Click "New Project"
-   - Select "Deploy from GitHub repo"
-   - Connect your GitHub repository
+## 🎯 Usage
 
-2. **Configure Environment Variables**:
-   - In your Railway project, go to "Variables"
-   - Add the environment variables listed above
+1. **Register/Login**: Create an account or login
+2. **Initialize Draft**: Set your draft position and league settings
+3. **Draft**: Get real-time recommendations and make picks
+4. **Export**: Download your draft results
 
-3. **Deploy**:
-   - Railway will automatically detect the Python app
-   - The `Procfile` and `requirements.txt` will handle the deployment
-   - Your app will be available at the provided URL
+## 🔄 Updating Player Data
 
-### Database Setup
+To update player rankings:
 
-Ensure your Supabase project has the following tables:
+1. Replace `rankings.csv` with new data
+2. Ensure the format matches the expected structure
+3. Restart the application
 
-- `users` - User authentication
-- `user_custom_projections` - Custom player projections
-- `user_draft_sessions` - Draft session data
-- `user_rosters` - User roster data
-- `completed_drafts` - Completed draft data
+## 🐛 Troubleshooting
 
-## Local Development
+### Common Issues
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+1. **Port already in use**
+   ```bash
+   lsof -ti:5201 | xargs kill -9
+   ```
 
-# Set environment variables
-export SUPABASE_URL=https://arlovpdltkdlrkkmtigv.supabase.co
-export SUPABASE_KEY=your-supabase-key
-export FLASK_SECRET_KEY=your-secret-key
+2. **CSV file not found**
+   - Ensure `rankings.csv` is in the project root
+   - Check file permissions
 
-# Run the application
-python3 fantasy_draft_web_enhanced.py
-```
+3. **Database connection issues**
+   - Verify Supabase credentials
+   - Check network connectivity
 
-## Usage
+## 📝 License
 
-1. **Login**: Use your credentials to access the application
-2. **Pre-draft**: Set custom projections for players
-3. **Initialize Draft**: Start a new draft session
-4. **Get Recommendations**: Receive real-time draft advice
-5. **Draft Players**: Make selections and track your roster
+This project is for personal use. All rights reserved.
 
-## Bench Value System
+## 🤝 Contributing
 
-- **QB**: 10% (1st bench), 1% (2nd+ bench)
-- **RB**: 27% (1st bench), 18% (2nd bench), 15% (3rd bench), 1% (4th+ bench)
-- **WR**: 27% (1st bench), 18% (2nd bench), 10% (3rd bench), 1% (4th+ bench)
-- **TE**: 5% (1st bench), 1% (2nd+ bench)
-- **K/DST**: 1% (all bench positions)
+This is a personal project. For issues or suggestions, please contact the repository owner.
 
-## Support
+## 📞 Support
 
-For issues or questions, please check the application logs in Railway dashboard. 
+For technical support or questions, please open an issue on GitHub.
+
+---
+
+**PickProphet** - Making fantasy drafts smarter, one pick at a time! 🏈

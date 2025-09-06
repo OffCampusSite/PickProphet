@@ -1,1 +1,1 @@
-web: python3 fantasy_draft_web_enhanced.py 
+web: python3 -m flask run --host=0.0.0.0 --port=$PORT 
